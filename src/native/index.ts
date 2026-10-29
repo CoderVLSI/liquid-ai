@@ -24,6 +24,15 @@ export interface ExitReason {
   rssKb: number;
 }
 
+export interface PlayerStats {
+  /** times playback caught up with generation and had to refill */
+  underruns: number;
+  halUnderruns: number;
+  rebufferMs: number;
+  prebufferMs: number;
+  bufferedMs: number;
+}
+
 export interface CrashReport {
   name: string;
   text: string;
@@ -48,7 +57,11 @@ interface Raw {
   stopMic(): Promise<void>;
   enterVoiceMode(callMode: boolean): Promise<{ mode: string; speaker: boolean; headset?: boolean }>;
   leaveVoiceMode(): Promise<void>;
-  startPlayer(sampleRate: number, callMode: boolean): Promise<void>;
+  startPlayer(sampleRate: number, callMode: boolean, prebufferMs: number): Promise<void>;
+  playerBegin(): void;
+  playerEnd(): void;
+  playerSetPrebuffer(ms: number): void;
+  playerStats(): PlayerStats;
   playPcm(base64: string): void;
   flushPlayer(): void;
   playerPendingMs(): number;
@@ -67,6 +80,8 @@ interface Raw {
   writeCrash(kind: string, text: string): void;
   log(level: string, message: string): void;
   keepAlive(on: boolean, text: string): void;
+  isIgnoringBatteryOptimizations(): boolean;
+  requestIgnoreBatteryOptimizations(): void;
   notify(id: number, title: string, body: string): void;
   scheduleReminder(id: number, atMs: number, title: string, body: string): void;
   cancelReminder(id: number): void;
@@ -99,7 +114,11 @@ export const native = {
   stopMic: () => (mod ? mod.stopMic() : Promise.resolve()),
   enterVoiceMode: (callMode: boolean) => need().enterVoiceMode(callMode),
   leaveVoiceMode: () => (mod ? mod.leaveVoiceMode() : Promise.resolve()),
-  startPlayer: (rate: number, callMode: boolean) => need().startPlayer(rate, callMode),
+  startPlayer: (rate: number, callMode: boolean, prebufferMs: number) => need().startPlayer(rate, callMode, prebufferMs),
+  playerBegin: () => mod?.playerBegin(),
+  playerEnd: () => mod?.playerEnd(),
+  playerSetPrebuffer: (ms: number) => mod?.playerSetPrebuffer(ms),
+  playerStats: (): PlayerStats => (mod ? mod.playerStats() : { underruns: 0, halUnderruns: 0, rebufferMs: 0, prebufferMs: 0, bufferedMs: 0 }),
   playPcm: (b64: string) => need().playPcm(b64),
   flushPlayer: () => mod?.flushPlayer(),
   playerPendingMs: () => (mod ? mod.playerPendingMs() : 0),
@@ -118,6 +137,8 @@ export const native = {
   writeCrash: (kind: string, text: string) => mod?.writeCrash(kind, text),
   log: (level: string, message: string) => mod?.log(level, message),
   keepAlive: (on: boolean, text: string) => mod?.keepAlive(on, text),
+  isIgnoringBatteryOptimizations: () => (mod ? mod.isIgnoringBatteryOptimizations() : true),
+  requestIgnoreBatteryOptimizations: () => mod?.requestIgnoreBatteryOptimizations(),
   notify: (id: number, title: string, body: string) => mod?.notify(id, title, body),
   scheduleReminder: (id: number, atMs: number, title: string, body: string) => mod?.scheduleReminder(id, atMs, title, body),
   cancelReminder: (id: number) => mod?.cancelReminder(id),

@@ -241,3 +241,41 @@ test('fetch_url validates the url and returns readable text', async () => {
   assert.match(out, /Hi/);
   assert.doesNotMatch(out, /x\(\)/);
 });
+
+// ---- approval ---------------------------------------------------------------------------------
+
+test('tools that change the outside world pause for approval, and nothing runs yet', async () => {
+  let ran = 0;
+  const post: Tool = {
+    name: 'slack_post', description: '', parameters: {},
+    approval: (a) => `Post to #${a.channel}: "${a.text}"`,
+    async run() { ran++; return 'Posted.'; },
+  };
+  const { deps } = setup([use(call('slack_post', { channel: 'general', text: 'hi' }, 'p1'))], { requireApproval: true }, [post]);
+  const r = await runTask(newTask(), deps);
+  assert.equal(ran, 0);
+  assert.equal(r.status, 'waiting');
+  assert.deepEqual(r.pending, [{ callId: 'p1', kind: 'approve', question: 'Post to #general: "hi"', tool: 'slack_post', args: { channel: 'general', text: 'hi' } }]);
+});
+
+test('with approvals switched off the tool just runs', async () => {
+  let ran = 0;
+  const post: Tool = { name: 'slack_post', description: '', parameters: {}, approval: () => 'x', async run() { ran++; return 'Posted.'; } };
+  const { deps } = setup([use(call('slack_post', {}, 'p1')), say('done')], { requireApproval: false }, [post]);
+  const r = await runTask(newTask(), deps);
+  assert.equal(ran, 1);
+  assert.equal(r.status, 'done');
+});
+
+test('read-only tools never ask for approval', async () => {
+  const { deps } = setup([use(call('echo', { text: 'x' }, 'e')), say('ok')], { requireApproval: true }, [echo]);
+  assert.equal((await runTask(newTask(), deps)).status, 'done');
+});
+
+test('an approval keeps the task waiting for the user, not for teammates', async () => {
+  const pending = [{ callId: 'a', kind: 'approve' as const, question: 'q' }, { callId: 'b', kind: 'child' as const, childId: 'c1' }];
+  const r = resolvePending(newTask({ pending, messages: [] }), 'b', 'child result');
+  assert.equal(r.status, 'waiting');
+  const r2 = resolvePending({ ...newTask({ pending: [pending[0]] }) }, 'a', 'denied');
+  assert.equal(r2.status, 'queued');
+});

@@ -19,6 +19,7 @@ import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
 import { buildRequest } from '../chat/history';
 import { startAgents } from '../agents/runner';
+import { startConnections } from '../connections/store';
 
 let filesDir = '';
 let genAbort: AbortController | null = null;
@@ -83,6 +84,7 @@ export async function boot() {
   if (appStore.get().crashes.length) log.warn('boot', `${appStore.get().crashes.length} crash report(s) from earlier runs`);
 
   RNAppState.addEventListener('change', onAppState);
+  void startConnections();
   void startAgents();
 
   // Warm the model so the first message is fast.
@@ -337,7 +339,11 @@ const audioPort: AudioPort = {
   leaveVoiceMode: () => native.leaveVoiceMode(),
   startMic: (r, v) => native.startMic(r, v),
   stopMic: () => native.stopMic(),
-  startPlayer: (r, c) => native.startPlayer(r, c),
+  startPlayer: (r, c, p) => native.startPlayer(r, c, p),
+  playerBegin: () => native.playerBegin(),
+  playerEnd: () => native.playerEnd(),
+  playerSetPrebuffer: (ms) => native.playerSetPrebuffer(ms),
+  playerStats: () => native.playerStats(),
   stopPlayer: () => native.stopPlayer(),
   playPcm: (b) => native.playPcm(b),
   flushPlayer: () => native.flushPlayer(),
@@ -404,6 +410,7 @@ export async function startVoice() {
         log.error('voice', message);
         toast(message, 6000);
       },
+      onPrebuffer: (ms) => setSettings({ voiceBufferMs: ms }),
       log: (m) => log.info('voice', m),
     });
     voice = session;

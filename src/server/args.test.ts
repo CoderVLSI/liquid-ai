@@ -12,7 +12,8 @@ test('omni gets weights, projector, loopback binding and reasoning off', () => {
   assert.equal(at('--host'), '127.0.0.1');
   assert.equal(at('--port'), '18080');
   assert.equal(at('--reasoning'), 'off');
-  assert.equal(at('-np'), '2');
+  assert.equal(at('-np'), '4'); // chat/voice + 3 parallel agents
+  assert.equal(at('-c'), String(6144 * 4));
   assert.ok(a.includes('--no-webui'));
 });
 
@@ -41,4 +42,24 @@ test('mergeSettings ignores junk and keeps valid saved values', () => {
   assert.equal(s.activeModel, 'vl');
   assert.equal(s.silenceMs, DEFAULT_SETTINGS.silenceMs);
   assert.deepEqual(mergeSettings(null), DEFAULT_SETTINGS);
+});
+
+test('voice models leave cores free for audio, text models use more', () => {
+  const at = (m: string) => {
+    const a = buildServerArgs(getModel(m as any), '/m', DEFAULT_SETTINGS, 8);
+    return Number(a[a.indexOf('-t') + 1]);
+  };
+  assert.equal(at('omni'), 4);
+  assert.equal(at('audio'), 4);
+  assert.equal(at('text'), 5);
+  // an explicit thread count always wins
+  const a = buildServerArgs(getModel('omni'), '/m', { ...DEFAULT_SETTINGS, threads: 6 }, 8);
+  assert.equal(a[a.indexOf('-t') + 1], '6');
+});
+
+test('swarm size sets the number of server slots', () => {
+  const a = buildServerArgs(getModel('text'), '/m', { ...DEFAULT_SETTINGS, agentParallel: 1 }, 8);
+  assert.equal(a[a.indexOf('-np') + 1], '2');
+  const b = buildServerArgs(getModel('text'), '/m', { ...DEFAULT_SETTINGS, agentParallel: 9 }, 8);
+  assert.equal(b[b.indexOf('-np') + 1], '5');
 });

@@ -1,6 +1,7 @@
 import { native } from '../native';
 import { log } from '../lib/log';
 import { MODELS, filePath, getModel, hfUrl, totalBytes } from './catalog';
+import { ensureNotificationPermission, inBackground, notifyPhone, refreshBackground, registerBackgroundSource } from '../lib/background';
 import type { ModelDef, ModelId } from './catalog';
 
 export type DownloadStatus = 'missing' | 'partial' | 'queued' | 'downloading' | 'ready' | 'error';
@@ -18,6 +19,8 @@ export interface ModelState {
 type Listener = () => void;
 
 const MAX_ATTEMPTS = 8;
+/** how many models download at the same time */
+const MAX_PARALLEL = 4;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 class Downloads {
@@ -51,6 +54,7 @@ class Downloads {
   private patch(id: ModelId, p: Partial<ModelState>) {
     this.state = { ...this.state, [id]: { ...this.state[id], ...p } };
     this.emit();
+    refreshBackground();
   }
 
   init() {
@@ -58,8 +62,43 @@ class Downloads {
     if (!this.wired) {
       this.wired = true;
       native.on('downloadProgress', (e) => this.onProgress(e.id, e.received));
+      registerBackgroundSource('downloads', () => this.backgroundText());
     }
     this.refresh();
+    void this.resumeInterrupted();
+  }
+
+  private wantedFile() {
+    return `${native.info().filesDir}/downloads-wanted.json`;
+  }
+
+  /** Remember which models were being downloaded, so a killed app picks them up again. */
+  private saveWanted() {
+    const ids = [...this.running, ...this.queue];
+    try {
+      native.writeText(this.wantedFile(), JSON.stringify(ids), false);
+    } catch {
+      // best effort
+    }
+  }
+
+  private async resumeInterrupted() {
+    try {
+      const raw = await native.readText(this.wantedFile());
+      const ids = raw ? (JSON.parse(raw) as ModelId[]) : [];
+      for (const id of ids) if (MODELS.some((m) => m.id === id) && this.state[id].status !== 'ready') this.start(id);
+    } catch {
+      // ignore
+    }
+  }
+
+  private backgroundText(): string | null {
+    const active = MODELS.filter((m) => ['downloading', 'queued'].includes(this.state[m.id].status));
+    if (!active.length) return null;
+    const done = active.reduce((a, m) => a + this.state[m.id].bytesDone, 0);
+    const total = active.reduce((a, m) => a + this.state[m.id].bytesTotal, 0);
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    return `Downloading ${active.length} model${active.length > 1 ? 's' : ''} · ${pct}%`;
   }
 
   readyIds(): ModelId[] {
@@ -126,7 +165,9 @@ class Downloads {
     if (this.running.has(id) || this.queue.includes(id) || this.state[id].status === 'ready') return;
     this.patch(id, { status: 'queued', error: undefined });
     this.queue.push(id);
-    void this.pump();
+    void ensureNotificationPermission();
+    this.saveWanted();
+    this.pump();
   }
 
   startAll() {
@@ -138,6 +179,7 @@ class Downloads {
     this.queue = this.queue.filter((q) => q !== id);
     for (const f of getModel(id).files) native.cancelDownload(`${id}/${f.name}`);
     if (!this.running.has(id)) this.refresh();
+    this.saveWanted();
   }
 
   async remove(id: ModelId) {
@@ -152,24 +194,38 @@ class Downloads {
     this.refresh();
   }
 
-  private async pump() {
-    if (this.running.size > 0) return;
-    const id = this.queue.shift();
-    if (!id) return;
-    this.running.add(id);
-    try {
-      await this.run(getModel(id));
-    } finally {
-      this.running.delete(id);
-      this.refresh();
-      void this.pump();
+  /** Starts queued models until MAX_PARALLEL are running at once. */
+  private pump() {
+    while (this.running.size < MAX_PARALLEL && this.queue.length) {
+      const id = this.queue.shift() as ModelId;
+      this.running.add(id);
+      void this.run(getModel(id))
+        .catch((e) => log.error('download', `${id} crashed`, e))
+        .finally(() => {
+          this.running.delete(id);
+          this.refresh();
+          this.saveWanted();
+          this.finished(id);
+          this.pump();
+        });
     }
+  }
+
+  /** Tell the user on their phone when a model is ready (or failed) while the app is minimised. */
+  private finished(id: ModelId) {
+    const st = this.state[id];
+    const m = getModel(id);
+    if (!inBackground()) return;
+    if (st.status === 'ready') notifyPhone(6000 + MODELS.indexOf(m), 'Model ready', `${m.name} finished downloading and is ready to use.`);
+    else if (st.status === 'error') notifyPhone(6000 + MODELS.indexOf(m), 'Download problem', `${m.name}: ${st.error ?? 'download failed'}`);
   }
 
   private async run(m: ModelDef) {
     const need = totalBytes(m) - this.state[m.id].bytesDone;
+    // other downloads that are still running will also eat disk space
+    const others = [...this.running].filter((r) => r !== m.id).reduce((a, r) => a + (this.state[r].bytesTotal - this.state[r].bytesDone), 0);
     const free = native.info().freeDiskBytes;
-    if (free < need + 300e6) {
+    if (free < need + others + 300e6) {
       this.patch(m.id, { status: 'error', error: `Not enough free storage: need ${Math.ceil(need / 1e6)} MB, have ${Math.floor(free / 1e6)} MB.` });
       return;
     }

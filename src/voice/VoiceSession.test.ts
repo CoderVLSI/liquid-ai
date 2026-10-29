@@ -42,10 +42,16 @@ class FakeAudio implements AudioPort {
   calls: string[] = [];
   played: string[] = [];
   pending = 0;
+  headset = true;
+  begins = 0;
+  ends = 0;
+  prebuffer = 0;
+  underruns = 0;
+  prebufferSets: number[] = [];
   frameCb: (f: { data: string; rms: number }) => void = () => {};
   async enterVoiceMode(c: boolean) {
     this.calls.push('enter:' + c);
-    return {};
+    return { headset: this.headset };
   }
   async leaveVoiceMode() {
     this.calls.push('leave');
@@ -57,8 +63,21 @@ class FakeAudio implements AudioPort {
   async stopMic() {
     this.calls.push('micStop');
   }
-  async startPlayer(rate: number) {
+  async startPlayer(rate: number, _callMode: boolean, prebufferMs: number) {
     this.calls.push('player:' + rate);
+    this.prebuffer = prebufferMs;
+  }
+  playerBegin() {
+    this.begins++;
+  }
+  playerEnd() {
+    this.ends++;
+  }
+  playerSetPrebuffer(ms: number) {
+    this.prebufferSets.push(ms);
+  }
+  playerStats() {
+    return { underruns: this.underruns, halUnderruns: 0, rebufferMs: 0, prebufferMs: this.prebuffer };
   }
   async stopPlayer() {
     this.calls.push('playerStop');
@@ -83,9 +102,13 @@ class FakeAudio implements AudioPort {
   }
 }
 
-function setup(over: Partial<Settings> = {}) {
+function setup(over: Partial<Settings> = {}, opts: { headset?: boolean } = {}) {
   const client = new FakeClient();
   const audio = new FakeAudio();
+  audio.headset = opts.headset ?? true;
+  const logs: string[] = [];
+  const prebuffers: number[] = [];
+  const time = { now: 1000 };
   const states: VoiceState[] = [];
   const texts: string[] = [];
   const errors: string[] = [];
@@ -100,30 +123,32 @@ function setup(over: Partial<Settings> = {}) {
     onResponseDone: () => {},
     onInterrupted: () => interrupted++,
     onError: (m) => errors.push(m),
-    log: () => {},
+    onPrebuffer: (ms) => prebuffers.push(ms),
+    log: (m) => logs.push(m),
   };
-  const session = new VoiceSession(client, audio, { ...DEFAULT_SETTINGS, ...over }, cb);
+  const session = new VoiceSession(client, audio, { ...DEFAULT_SETTINGS, ...over }, cb, () => time.now);
   let n = 0;
   const frame = (rms: number) => session.onFrame({ data: `f${n++}`, rms });
   const frames = (rms: number, count: number) => {
     for (let i = 0; i < count; i++) frame(rms);
   };
-  return { client, audio, session, states, texts, errors, frame, frames, get interrupted() { return interrupted; }, get userTurns() { return userTurns; } };
+  return { client, audio, session, states, texts, errors, frame, frames, logs, prebuffers, time, get interrupted() { return interrupted; }, get userTurns() { return userTurns; } };
 }
 
 test('start configures the session, audio route, speaker and mic at the model rates', async () => {
   const t = setup();
   await t.session.start();
-  assert.match(t.client.sent[0], /^update:.*"output_modalities":\["text","audio"\]/);
+  assert.match(t.client.sent[0], /^update:.*"output_modalities":\["audio"\]/);
   assert.deepEqual(t.audio.calls, ['enter:true', 'player:24000', 'mic:16000']);
+  assert.equal(t.audio.prebuffer, DEFAULT_SETTINGS.voiceBufferMs);
   assert.equal(t.session.state, 'listening');
   await t.session.stop();
 });
 
-test('audio-only reply setting asks for speech without text', async () => {
-  const t = setup({ speechReply: 'audio' });
+test('captions setting asks for interleaved text and speech', async () => {
+  const t = setup({ speechReply: 'text+audio' });
   await t.session.start();
-  assert.match(t.client.sent[0], /"output_modalities":\["audio"\]/);
+  assert.match(t.client.sent[0], /"output_modalities":\["text","audio"\]/);
   await t.session.stop();
 });
 
@@ -275,6 +300,104 @@ test('harmless empty-buffer errors are swallowed, real errors reach the user', a
   t.client.emit({ type: 'error', error: { type: 'server_error', message: 'decode failed' } });
   t.client.emit({ type: 'error', error: { type: 'invalid_request_error', message: 'The current model does not support realtime transcription.' } });
   assert.deepEqual(t.errors, ['decode failed', 'The current model does not support realtime transcription.']);
+  await t.session.stop();
+});
+
+const speak = (t: ReturnType<typeof setup>, id = 'r1') => {
+  t.frames(0.002, 12);
+  t.frames(0.1, 8);
+  t.frames(0.002, 30);
+  t.client.emit({ type: 'response.created', response: { id } });
+  t.client.emit({ type: 'response.output_audio.delta', response_id: id, delta: 'AAAA' });
+};
+
+test('on the loudspeaker the mic is ignored while it speaks, and for a moment after (no hearing itself)', async () => {
+  const t = setup({}, { headset: false });
+  await t.session.start();
+  assert.equal(t.session.canBargeIn(), false);
+  speak(t);
+  t.client.sent.length = 0;
+  t.frames(0.5, 20); // loud: that is its own voice leaking into the mic
+  assert.deepEqual(t.client.sent, []);
+
+  // the reply ends; its echo tail is still ringing, so the mic stays muted for a moment
+  t.client.emit({ type: 'response.done', response: { id: 'r1', status: 'completed' } });
+  t.audio.pending = 0;
+  t.time.now += 100;
+  t.frames(0.5, 20);
+  assert.deepEqual(t.client.sent, []);
+
+  // later, speech is heard again
+  t.time.now += 1000;
+  t.frames(0.002, 12);
+  t.frames(0.1, 8);
+  assert.ok(t.client.sent.some((x) => x.startsWith('append:')));
+  await t.session.stop();
+});
+
+test('barge-in on the loudspeaker is opt-in', async () => {
+  const t = setup({ bargeInOnSpeaker: true }, { headset: false });
+  await t.session.start();
+  assert.equal(t.session.canBargeIn(), true);
+  speak(t);
+  t.client.sent.length = 0;
+  t.frames(0.5, 10);
+  assert.ok(t.client.sent.includes('cancel'));
+  await t.session.stop();
+});
+
+test('with headphones interrupting is on by default', async () => {
+  const t = setup({}, { headset: true });
+  await t.session.start();
+  assert.equal(t.session.canBargeIn(), true);
+  await t.session.stop();
+});
+
+test('the speaker buffer is told when a response starts and ends', async () => {
+  const t = setup();
+  await t.session.start();
+  speak(t);
+  assert.equal(t.audio.begins, 1);
+  t.client.emit({ type: 'response.done', response: { id: 'r1', status: 'completed' } });
+  assert.equal(t.audio.ends, 1);
+  await t.session.stop();
+});
+
+test('each reply logs how fast speech was generated', async () => {
+  const t = setup();
+  await t.session.start();
+  speak(t);
+  t.time.now += 4000;
+  t.client.emit({ type: 'response.done', response: { id: 'r1', status: 'completed' } });
+  assert.ok(t.logs.some((l) => /reply: .* s of speech in .* s \(.*x real time\).*stutters 0/.test(l)), t.logs.join('\n'));
+  await t.session.stop();
+});
+
+test('the jitter buffer grows after stutters and slowly shrinks when playback is clean', async () => {
+  const t = setup({ voiceBufferMs: 900 });
+  await t.session.start();
+
+  speak(t, 'a');
+  t.audio.underruns = 2; // two stutters during that reply
+  t.client.emit({ type: 'response.done', response: { id: 'a', status: 'completed' } });
+  assert.deepEqual(t.audio.prebufferSets, [1600]); // 900 + 2 * 350
+  assert.deepEqual(t.prebuffers, [1600]);
+
+  for (const id of ['b', 'c', 'd']) {
+    speak(t, id);
+    t.client.emit({ type: 'response.done', response: { id, status: 'completed' } });
+  }
+  assert.deepEqual(t.audio.prebufferSets, [1600, 1450]); // three clean replies -> -150
+  await t.session.stop();
+});
+
+test('auto-tuning can be switched off', async () => {
+  const t = setup({ voiceAutoBuffer: false });
+  await t.session.start();
+  speak(t);
+  t.audio.underruns = 5;
+  t.client.emit({ type: 'response.done', response: { id: 'r1', status: 'completed' } });
+  assert.deepEqual(t.audio.prebufferSets, []);
   await t.session.stop();
 });
 

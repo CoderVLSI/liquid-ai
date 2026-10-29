@@ -110,8 +110,24 @@ class LiquidNativeModule : Module() {
       route.leave()
     }
 
-    AsyncFunction("startPlayer") { sampleRate: Int, callMode: Boolean ->
-      player.start(sampleRate, callMode)
+    AsyncFunction("startPlayer") { sampleRate: Int, callMode: Boolean, prebufferMs: Int ->
+      player.start(sampleRate, callMode, prebufferMs)
+    }
+
+    Function("playerBegin") {
+      player.begin()
+    }
+
+    Function("playerEnd") {
+      player.end()
+    }
+
+    Function("playerSetPrebuffer") { ms: Int ->
+      player.setPrebuffer(ms)
+    }
+
+    Function("playerStats") {
+      player.stats()
     }
 
     // Runs on the JS thread on purpose: ordering of audio deltas must be preserved.
@@ -201,6 +217,32 @@ class LiquidNativeModule : Module() {
 
     Function("keepAlive") { on: Boolean, text: String ->
       AgentService.set(context, on, text)
+    }
+
+    Function("isIgnoringBatteryOptimizations") {
+      val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.M || pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    // Opens the system dialog that lets the user exempt this app, so Android does not stop background work.
+    Function("requestIgnoreBatteryOptimizations") {
+      try {
+        val i = android.content.Intent(
+          android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+          android.net.Uri.parse("package:${context.packageName}"),
+        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(i)
+      } catch (e: Throwable) {
+        Log.w(tag, "battery optimisation intent failed: ${e.message}")
+        try {
+          context.startActivity(
+            android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+              .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+          )
+        } catch (e2: Throwable) {
+          Log.w(tag, "battery settings intent failed: ${e2.message}")
+        }
+      }
     }
 
     Function("notify") { id: Int, title: String, body: String ->

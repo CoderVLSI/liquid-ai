@@ -231,6 +231,7 @@ function TeamTab() {
   const agents = useAgents((s) => s.agents);
   const notes = useAgents((s) => s.notes);
   const web = useApp((s) => s.settings.agentWeb);
+  const parallel = useApp((s) => s.settings.agentParallel);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('');
   const [role, setRole] = useState('');
@@ -244,6 +245,24 @@ function TeamTab() {
             <Text style={styles.meta}>Lets agents search the web and read pages. Off keeps every task fully offline.</Text>
           </View>
           <Switch value={web} onValueChange={(v) => setSettings({ agentWeb: v })} />
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.rowBetween}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={shared.h2}>Swarm size</Text>
+            <Text style={styles.meta}>How many agents may work at the same time. Needs a model restart to take effect. More is faster overall but uses more memory.</Text>
+          </View>
+          <View style={styles.stepper}>
+            <Pressable style={styles.stepBtn} onPress={() => setSettings({ agentParallel: Math.max(1, parallel - 1) })}>
+              <Text style={styles.stepText}>−</Text>
+            </Pressable>
+            <Text style={styles.stepValue}>{parallel}</Text>
+            <Pressable style={styles.stepBtn} onPress={() => setSettings({ agentParallel: Math.min(4, parallel + 1) })}>
+              <Text style={styles.stepText}>＋</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -353,5 +372,9 @@ const styles = StyleSheet.create({
   stepDetail: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   idea: { backgroundColor: colors.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  stepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderRadius: 12 },
+  stepBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  stepText: { color: colors.accent, fontSize: 18, fontWeight: '700' },
+  stepValue: { color: colors.text, fontSize: 15, minWidth: 28, textAlign: 'center' },
   ideaText: { color: colors.text, fontSize: 14, lineHeight: 20 },
 });

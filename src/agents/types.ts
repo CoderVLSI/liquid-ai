@@ -34,9 +34,13 @@ export interface Step {
 /** A tool call that cannot be answered yet. */
 export interface Pending {
   callId: string;
-  kind: 'ask' | 'child';
+  /** ask = question for the user, child = waiting for a teammate, approve = a tool wants permission */
+  kind: 'ask' | 'child' | 'approve';
   childId?: string;
   question?: string;
+  /** for approve: the tool and arguments that will run if the user allows it */
+  tool?: string;
+  args?: Record<string, any>;
 }
 
 export interface AgentTask {
@@ -86,6 +90,8 @@ export interface Tool {
   parameters: Record<string, unknown>;
   /** tools that touch the internet; hidden when the user switches web access off */
   web?: boolean;
+  /** tools that change something outside the phone describe the action here; the user must approve it first */
+  approval?: (args: Record<string, any>) => string;
   run(args: Record<string, any>): Promise<string>;
 }
 

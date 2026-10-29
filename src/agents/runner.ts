@@ -1,6 +1,5 @@
-import { AppState as RNAppState, PermissionsAndroid, Platform } from 'react-native';
-
 import { native } from '../native';
+import { ensureNotificationPermission, inBackground, refreshBackground, registerBackgroundSource } from '../lib/background';
 import { log, stringify } from '../lib/log';
 import { appStore } from '../state/app';
 import { downloads } from '../models/downloads';
@@ -11,13 +10,14 @@ import { deserialize, serialize } from './persist';
 import { runTask, resolvePending } from './engine';
 import { buildTools } from './tools';
 import { ServerLlm } from './llm';
+import { connectionTools } from '../connections/store';
 import type { Agent, AgentTask, Note, Tool } from './types';
 
 let started = false;
-let busy = false;
-let current: { id: string; ctl: AbortController } | null = null;
+let pumping = false;
+/** tasks that are executing right now (the swarm) */
+const running = new Map<string, AbortController>();
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let lastKeepAlive = '';
 let uid = 0;
 const newId = (p: string) => `${p}${Date.now().toString(36)}${(uid++).toString(36)}`;
 
@@ -53,27 +53,21 @@ function patchTask(id: string, patch: Partial<AgentTask>) {
 const ACTIVE = new Set(['queued', 'running', 'scheduled', 'blocked']);
 
 function updateKeepAlive() {
-  const n = agentStore.get().tasks.filter((t) => ACTIVE.has(t.status)).length;
-  const key = n > 0 ? `${n} task${n > 1 ? 's' : ''}` : '';
-  if (key === lastKeepAlive) return;
-  lastKeepAlive = key;
-  native.keepAlive(n > 0, n > 0 ? `${key} in progress` : '');
+  refreshBackground();
+}
+
+function backgroundText(): string | null {
+  const tasks = agentStore.get().tasks;
+  const n = tasks.filter((t) => ACTIVE.has(t.status)).length;
+  if (!n) return null;
+  const working = running.size;
+  return working > 1 ? `${working} agents working · ${n} task${n > 1 ? 's' : ''}` : `${n} agent task${n > 1 ? 's' : ''}`;
 }
 
 function notifyId(id: string): number {
   let h = 7;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return 5000 + (Math.abs(h) % 100000);
-}
-
-async function ensureNotificationPermission() {
-  try {
-    if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
-      await PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS' as any);
-    }
-  } catch {
-    // optional
-  }
 }
 
 // ---- notes (used by the notebook tools) ------------------------------------------------------
@@ -119,6 +113,7 @@ export async function startAgents() {
     log.warn('agents', 'load failed', stringify(e));
     agentStore.set({ loaded: true });
   }
+  registerBackgroundSource('agents', backgroundText);
   updateKeepAlive();
   setInterval(() => void pump(), 15_000);
   void pump();
@@ -166,7 +161,7 @@ export function answerTask(id: string, text: string) {
 export function cancelTask(id: string) {
   const t = find(id);
   if (!t || ['done', 'failed', 'cancelled'].includes(t.status)) return;
-  if (current?.id === id) current.ctl.abort();
+  running.get(id)?.abort();
   patchTask(id, { status: 'cancelled', pending: [] });
   for (const c of agentStore.get().tasks.filter((x) => x.parentId === id)) cancelTask(c.id);
   const after = find(id);
@@ -223,61 +218,106 @@ function promoteDue() {
   if (due.length) setTasks((ts) => ts.map((t) => (due.some((d) => d.id === t.id) ? { ...t, status: 'queued', runAt: undefined } : t)));
 }
 
-export async function pump() {
-  if (busy) return;
-  busy = true;
+/** Starts queued tasks until the swarm is as big as the settings allow. Safe to call any time. */
+export function pump() {
+  if (pumping) return;
+  pumping = true;
   try {
-    for (;;) {
-      promoteDue();
-      const s = appStore.get();
-      if (s.voice.active || s.generating) break; // don't fight a live conversation for the CPU
+    promoteDue();
+    const s = appStore.get();
+    if (s.voice.active || s.generating) return; // don't fight a live conversation for the CPU
+    const limit = Math.max(1, Math.min(4, s.settings.agentParallel));
+    while (running.size < limit) {
       const next = agentStore
         .get()
-        .tasks.filter((t) => t.status === 'queued')
+        .tasks.filter((t) => t.status === 'queued' && !running.has(t.id))
         .sort((a, b) => b.depth - a.depth || a.createdAt - b.createdAt)[0]; // finish sub-tasks first
       if (!next) break;
-      await execute(next.id);
+      const ctl = new AbortController();
+      running.set(next.id, ctl);
+      patchTask(next.id, { status: 'running', error: undefined }); // synchronously, so it is not picked twice
+      void execute(next.id, ctl)
+        .catch((e) => {
+          log.error('agents', 'runner crashed', stringify(e));
+          patchTask(next.id, { status: 'failed', error: String(e?.message ?? e) });
+        })
+        .finally(() => {
+          running.delete(next.id);
+          refreshBackground();
+          pump();
+        });
     }
-  } catch (e) {
-    log.error('agents', 'runner crashed', stringify(e));
   } finally {
-    busy = false;
+    pumping = false;
   }
 }
 
-async function execute(id: string) {
+/** Everything an agent may use: built-in tools plus whatever the user connected (Slack, Google). */
+function toolsFor(agent: Agent, allowWeb: boolean): Tool[] {
+  return [
+    ...buildTools({
+      now: () => new Date(),
+      fetchText,
+      notes: notesApi,
+      scheduleReminder: (atMs, text) => {
+        const rid = notifyId(newId('r'));
+        native.scheduleReminder(rid, atMs, `⏰ ${agent.name}`, text);
+        return rid;
+      },
+    }),
+    ...connectionTools(),
+  ].filter((t) => !t.web || allowWeb);
+}
+
+/** The user's decision on a tool that wanted permission (post, send, create…). */
+export async function approveTask(id: string, allow: boolean) {
+  const t = find(id);
+  if (!t || t.status !== 'waiting') return;
+  const p = t.pending.find((x) => x.kind === 'approve');
+  if (!p) return;
+  const agents = agentStore.get().agents;
+  const agent = agents.find((a) => a.id === t.agentId) ?? agents[0];
+  let content: string;
+  if (allow) {
+    const tool = toolsFor(agent, appStore.get().settings.agentWeb).find((x) => x.name === p.tool);
+    try {
+      content = tool ? String(await tool.run(p.args ?? {})) : `Error: the tool ${p.tool} is not available any more.`;
+    } catch (e: any) {
+      content = `Error: ${e?.message ?? e}`;
+    }
+  } else {
+    content = 'The user denied this action. Do not try it again; continue without it or explain what you could not do.';
+  }
+  const patch = resolvePending(t, p.callId, content);
+  patchTask(id, {
+    ...patch,
+    steps: [...t.steps, { t: Date.now(), kind: allow ? 'tool' : 'info', title: `${allow ? 'Approved' : 'Denied'}: ${p.tool}`, detail: content }],
+  });
+  pump();
+}
+
+async function execute(id: string, ctl: AbortController) {
   const task = find(id);
   if (!task) return;
   const settings = appStore.get().settings;
   const modelId = pickModel();
   if (!modelId) {
     patchTask(id, { status: 'failed', error: 'No model is downloaded yet. Open Models and download one.' });
+    afterRun(id);
     return;
   }
 
-  const ctl = new AbortController();
-  current = { id, ctl };
-  patchTask(id, { status: 'running', error: undefined });
   try {
     await server.ensure(modelId, settings);
   } catch (e: any) {
     patchTask(id, { status: 'failed', error: `Could not start the model: ${e?.message ?? e}` });
-    current = null;
+    afterRun(id);
     return;
   }
 
   const agents = agentStore.get().agents;
   const agent = agents.find((a) => a.id === task.agentId) ?? agents[0];
-  const tools: Tool[] = buildTools({
-    now: () => new Date(),
-    fetchText,
-    notes: notesApi,
-    scheduleReminder: (atMs, text) => {
-      const rid = notifyId(newId('r'));
-      native.scheduleReminder(rid, atMs, `⏰ ${agent.name}`, text);
-      return rid;
-    },
-  }).filter((t) => !t.web || settings.agentWeb);
+  const tools = toolsFor(agent, settings.agentWeb);
 
   try {
     const patch = await runTask(find(id) ?? task, {
@@ -288,6 +328,7 @@ async function execute(id: string) {
       now: () => new Date(),
       signal: ctl.signal,
       maxSteps: settings.agentMaxSteps,
+      requireApproval: settings.confirmWrites,
       onUpdate: (p) => patchTask(id, p),
       spawnChild: (name, goal) => {
         const mate = agents.find((a) => a.name.toLowerCase() === name.toLowerCase() && a.id !== agent.id);
@@ -301,8 +342,6 @@ async function execute(id: string) {
   } catch (e: any) {
     log.error('agents', 'task crashed', stringify(e));
     patchTask(id, { status: 'failed', error: String(e?.message ?? e) });
-  } finally {
-    current = null;
   }
   afterRun(id);
 }
@@ -321,7 +360,7 @@ function afterRun(id: string) {
   if (!t) return;
   const agent = agentStore.get().agents.find((a) => a.id === t.agentId);
   const label = `${agent?.emoji ?? '🤖'} ${agent?.name ?? 'Agent'}`;
-  const background = RNAppState.currentState !== 'active';
+  const background = inBackground();
 
   if (t.status === 'done' || t.status === 'failed' || t.status === 'cancelled') {
     if (t.parentId) resolveParent(t);
@@ -332,6 +371,6 @@ function afterRun(id: string) {
       enqueue({ agentId: t.agentId, goal: t.goal, runAt: Date.now() + t.everyMinutes * 60_000, everyMinutes: t.everyMinutes });
     }
   } else if (t.status === 'waiting' && background) {
-    native.notify(notifyId(t.id), `${label} needs you`, t.pending.find((p) => p.kind === 'ask')?.question ?? t.goal);
+    native.notify(notifyId(t.id), `${label} needs you`, t.pending.find((p) => p.kind === 'ask' || p.kind === 'approve')?.question ?? t.goal);
   }
 }

@@ -28,6 +28,8 @@ export interface EngineDeps {
   now: () => Date;
   signal?: AbortSignal;
   maxSteps?: number;
+  /** ask the user before any tool that has an `approval` description runs */
+  requireApproval?: boolean;
   /** live progress (UI + persistence); the returned patch of runTask is the final one */
   onUpdate: (patch: Partial<AgentTask>) => void;
 }
@@ -45,6 +47,7 @@ export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: numb
   ];
   if (mates.length && depth < MAX_DELEGATION_DEPTH) {
     lines.push(`Teammates you can hand work to with delegate_task: ${mates.map((m) => `${m.name} (${m.role})`).join('; ')}.`);
+    lines.push('Independent sub-tasks can be delegated in the same turn (several delegate_task calls at once): your teammates work on them in parallel, so split big jobs instead of doing them one by one.');
   }
   return lines.join('\n');
 }
@@ -182,6 +185,13 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
           continue;
         }
 
+        if (tool.approval && deps.requireApproval) {
+          const question = tool.approval(parsed.args);
+          push({ kind: 'ask', title: 'Needs your approval', detail: question });
+          pending.push({ callId: call.id, kind: 'approve', question, tool: call.name, args: parsed.args });
+          continue;
+        }
+
         let out: string;
         try {
           out = clip(String(await tool.run(parsed.args)));
@@ -194,9 +204,9 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
 
       sync();
       if (pending.length) {
-        const asks = pending.filter((p) => p.kind === 'ask');
+        const needsUser = pending.some((p) => p.kind === 'ask' || p.kind === 'approve');
         return {
-          status: asks.length ? 'waiting' : 'blocked',
+          status: needsUser ? 'waiting' : 'blocked',
           pending,
           messages,
           steps,
@@ -233,6 +243,6 @@ export function resolvePending(task: AgentTask, callId: string, content: string)
   return {
     pending,
     messages,
-    status: pending.length ? (pending.some((p) => p.kind === 'ask') ? 'waiting' : 'blocked') : 'queued',
+    status: pending.length ? (pending.some((p) => p.kind === 'ask' || p.kind === 'approve') ? 'waiting' : 'blocked') : 'queued',
   };
 }

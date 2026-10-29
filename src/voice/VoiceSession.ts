@@ -10,7 +10,11 @@ export interface AudioPort {
   leaveVoiceMode(): Promise<unknown>;
   startMic(rate: number, voiceComm: boolean): Promise<{ sampleRate: number; aec: boolean; ns: boolean }>;
   stopMic(): Promise<unknown>;
-  startPlayer(rate: number, callMode: boolean): Promise<unknown>;
+  startPlayer(rate: number, callMode: boolean, prebufferMs: number): Promise<unknown>;
+  playerBegin(): void;
+  playerEnd(): void;
+  playerSetPrebuffer(ms: number): void;
+  playerStats(): { underruns: number; halUnderruns: number; rebufferMs: number; prebufferMs: number };
   stopPlayer(): Promise<unknown>;
   playPcm(base64: string): void;
   flushPlayer(): void;
@@ -29,11 +33,15 @@ export interface VoiceCallbacks {
   onResponseDone(id: string, status: string): void;
   onInterrupted(): void;
   onError(message: string): void;
+  /** the auto-tuner changed the jitter buffer; persist it */
+  onPrebuffer?(ms: number): void;
   log(message: string): void;
 }
 
 const PRE_ROLL_FRAMES = 10; // 400 ms kept so the first syllable is not clipped
 const SPEAKING_TAIL_MS = 30;
+/** after the assistant stops, keep ignoring the mic for a moment: its voice is still ringing in the room */
+const ECHO_TAIL_MS = 450;
 
 export class VoiceSession {
   state: VoiceState = 'connecting';
@@ -50,6 +58,16 @@ export class VoiceSession {
   private ticker: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private callMode = false;
+  private headset = false;
+  private outRate = 24000;
+  private prebufferMs = 900;
+  private lastUnderruns = 0;
+  private cleanResponses = 0;
+  private lastBusyAt = 0;
+  private clock: () => number;
+  private respStartedAt = 0;
+  private firstAudioAt = 0;
+  private audioBytes = 0;
 
   private responseActive = false;
   private activeResponseId = '';
@@ -58,7 +76,9 @@ export class VoiceSession {
   private cancelUpTo = 0;
   private cancelled = new Set<string>();
 
-  constructor(client: RealtimeLike, audio: AudioPort, settings: Settings, cb: VoiceCallbacks) {
+  constructor(client: RealtimeLike, audio: AudioPort, settings: Settings, cb: VoiceCallbacks, clock: () => number = Date.now) {
+    this.clock = clock;
+    this.prebufferMs = settings.voiceBufferMs;
     this.client = client;
     this.audio = audio;
     this.settings = settings;
@@ -88,9 +108,13 @@ export class VoiceSession {
       });
 
       this.callMode = this.settings.callMode;
-      const route = await this.audio.enterVoiceMode(this.callMode);
-      this.cb.log(`audio route: ${JSON.stringify(route)}`);
-      if (speak) await this.audio.startPlayer(info.outputRate as number, this.callMode);
+      const route = (await this.audio.enterVoiceMode(this.callMode)) as { headset?: boolean } | undefined;
+      this.headset = !!route?.headset;
+      this.cb.log(`audio route: ${JSON.stringify(route)} -> ${this.canBargeIn() ? 'interruptible' : 'half-duplex (no interrupting while it speaks; use headphones to interrupt)'}`);
+      if (speak) {
+        this.outRate = info.outputRate as number;
+        await this.audio.startPlayer(this.outRate, this.callMode, this.prebufferMs);
+      }
       this.unsubs.push(this.audio.onMicFrame((f) => this.onFrame(f)));
       this.unsubs.push(this.audio.onMicError((m) => this.fail(`Microphone error: ${m}`)));
       const mic = await this.audio.startMic(info.inputRate, this.callMode);
@@ -146,6 +170,11 @@ export class VoiceSession {
     this.cancelResponse();
   }
 
+  /** Interrupting by voice works reliably with headphones; on the loudspeaker the assistant would hear itself. */
+  canBargeIn(): boolean {
+    return this.settings.bargeIn && (this.headset || this.settings.bargeInOnSpeaker);
+  }
+
   assistantBusy(): boolean {
     return this.responseActive || this.audio.playerPendingMs() > SPEAKING_TAIL_MS;
   }
@@ -159,8 +188,10 @@ export class VoiceSession {
     if (this.muted) return;
 
     const busy = this.assistantBusy();
-    if (busy && !this.settings.bargeIn) {
-      // half-duplex: ignore the mic while the assistant talks so it cannot hear itself
+    const now = this.clock();
+    if (busy) this.lastBusyAt = now;
+    if (!this.canBargeIn() && (busy || now - this.lastBusyAt < ECHO_TAIL_MS)) {
+      // half-duplex: ignore the mic while the assistant talks (and just after) so it cannot hear itself
       this.vad.reset();
       this.pre = [];
       return;
@@ -233,6 +264,10 @@ export class VoiceSession {
         }
         this.responseActive = true;
         this.activeResponseId = id;
+        this.respStartedAt = this.clock();
+        this.firstAudioAt = 0;
+        this.audioBytes = 0;
+        this.audio.playerBegin();
         this.cb.onResponseStart(id);
         return;
       }
@@ -245,6 +280,8 @@ export class VoiceSession {
       case 'response.output_audio.delta': {
         const id = String(e.response_id ?? '');
         if (this.cancelled.has(id) || typeof e.delta !== 'string') return;
+        if (!this.firstAudioAt) this.firstAudioAt = this.clock();
+        this.audioBytes += Math.floor((e.delta.length * 3) / 4);
         this.audio.playPcm(e.delta);
         if (this.state !== 'hearing') this.setState('speaking');
         return;
@@ -258,6 +295,8 @@ export class VoiceSession {
         }
         this.responseActive = false;
         this.activeResponseId = '';
+        this.audio.playerEnd(); // play out the tail even if it is shorter than the buffer
+        this.reportAndTune();
         this.cb.onResponseDone(id, status);
         return;
       }
@@ -271,6 +310,36 @@ export class VoiceSession {
       }
       default:
         return;
+    }
+  }
+
+  /** Logs how fast speech was generated and nudges the jitter buffer to match this phone. */
+  private reportAndTune() {
+    if (!this.audioBytes) return;
+    const audioMs = (this.audioBytes / 2 / this.outRate) * 1000;
+    const wallMs = Math.max(1, this.clock() - this.respStartedAt);
+    const rtf = audioMs / wallMs; // >1 = faster than real time
+    const st = this.audio.playerStats();
+    const newUnderruns = st.underruns - this.lastUnderruns;
+    this.lastUnderruns = st.underruns;
+    this.cb.log(
+      `reply: ${(audioMs / 1000).toFixed(1)} s of speech in ${(wallMs / 1000).toFixed(1)} s (${rtf.toFixed(2)}x real time), ` +
+        `first audio after ${this.firstAudioAt ? this.firstAudioAt - this.respStartedAt : '-'} ms, stutters ${newUnderruns}, ` +
+        `rebuffered ${Math.round(st.rebufferMs)} ms total, buffer ${this.prebufferMs} ms`,
+    );
+    if (!this.settings.voiceAutoBuffer) return;
+    let next = this.prebufferMs;
+    if (newUnderruns > 0) {
+      this.cleanResponses = 0;
+      next = Math.min(4000, this.prebufferMs + 350 * Math.min(newUnderruns, 3));
+    } else if (++this.cleanResponses >= 3) {
+      this.cleanResponses = 0;
+      next = Math.max(400, this.prebufferMs - 150);
+    }
+    if (next !== this.prebufferMs) {
+      this.prebufferMs = next;
+      this.audio.playerSetPrebuffer(next);
+      this.cb.onPrebuffer?.(next);
     }
   }
 

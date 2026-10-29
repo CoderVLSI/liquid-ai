@@ -6,12 +6,18 @@ export interface Settings {
   voicePrompt: string;
   /** 0 = pick automatically from the CPU core count */
   threads: number;
-  /** total context shared by the 2 server slots */
-  contextSize: number;
+  /** context window of each conversation slot (chat, voice and every parallel agent get one) */
+  contextPerSlot: number;
   thinking: boolean;
   /** 'text+audio' shows live captions while it speaks */
   speechReply: 'text+audio' | 'audio';
   bargeIn: boolean;
+  /** allow interrupting while the assistant plays through the loudspeaker (it can hear itself; headphones are safe) */
+  bargeInOnSpeaker: boolean;
+  /** jitter buffer before speech starts playing, ms */
+  voiceBufferMs: number;
+  /** raise/lower the buffer automatically depending on stutter */
+  voiceAutoBuffer: boolean;
   /** Android "call" audio mode: enables the platform echo canceller */
   callMode: boolean;
   vadSensitivity: number;
@@ -23,6 +29,10 @@ export interface Settings {
   agentWeb: boolean;
   /** max model calls per agent task before it must wrap up */
   agentMaxSteps: number;
+  /** how many agent tasks may run at the same time (the swarm size) */
+  agentParallel: number;
+  /** ask before an agent posts, sends or creates something outside the phone */
+  confirmWrites: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,10 +41,13 @@ export const DEFAULT_SETTINGS: Settings = {
   voicePrompt:
     'You are a friendly voice assistant. Answer in short, natural spoken sentences. Do not use lists, markdown or emojis.',
   threads: 0,
-  contextSize: 16384,
+  contextPerSlot: 6144,
   thinking: false,
-  speechReply: 'text+audio',
+  speechReply: 'audio',
   bargeIn: true,
+  bargeInOnSpeaker: false,
+  voiceBufferMs: 900,
+  voiceAutoBuffer: true,
   callMode: true,
   vadSensitivity: 0.55,
   silenceMs: 800,
@@ -42,6 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
   port: 18080,
   agentWeb: true,
   agentMaxSteps: 10,
+  agentParallel: 3,
+  confirmWrites: true,
 };
 
 export function mergeSettings(saved: unknown): Settings {

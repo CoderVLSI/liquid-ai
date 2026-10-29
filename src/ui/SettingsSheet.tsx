@@ -4,6 +4,7 @@ import { Sheet } from './Sheet';
 import { useApp } from './hooks';
 import { colors, shared } from './theme';
 import { openSheet, restartServer, setSettings } from '../app/controller';
+import { native } from '../native';
 import type { Settings } from '../state/settings';
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -42,13 +43,22 @@ export function SettingsSheet() {
     <Sheet visible={visible} title="Settings" onClose={() => openSheet('none')}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <Text style={styles.section}>Live voice</Text>
-        <Row title="Interrupt by speaking" hint="Talk over the assistant to cut it off">
+        <Row title="Interrupt by speaking" hint="Talk over the assistant to cut it off. Works with headphones.">
           <Switch value={s.bargeIn} onValueChange={(v) => set({ bargeIn: v })} />
+        </Row>
+        <Row title="Interrupt on the loudspeaker too" hint="Off is smoother: the mic is muted while it speaks so it cannot hear itself. Use the Interrupt button instead.">
+          <Switch value={s.bargeInOnSpeaker} onValueChange={(v) => set({ bargeInOnSpeaker: v })} />
+        </Row>
+        <Row title="Smooth speech (buffer)" hint="Audio buffered before it plays. Higher = fewer stutters, slightly later start.">
+          <Stepper value={s.voiceBufferMs} step={200} min={0} max={4000} format={(v) => `${v} ms`} onChange={(v) => set({ voiceBufferMs: v })} />
+        </Row>
+        <Row title="Auto-tune the buffer" hint="Raises it after stutters, lowers it when playback is clean">
+          <Switch value={s.voiceAutoBuffer} onValueChange={(v) => set({ voiceAutoBuffer: v })} />
         </Row>
         <Row title="Echo cancellation (call mode)" hint="Lets the speaker and mic coexist. Turn off if audio is too quiet.">
           <Switch value={s.callMode} onValueChange={(v) => set({ callMode: v })} />
         </Row>
-        <Row title="Show captions while it speaks" hint="Off = audio only">
+        <Row title="Show captions while it speaks" hint="Makes the model generate text too, which is slower on a phone. Off = smoother speech.">
           <Switch value={s.speechReply === 'text+audio'} onValueChange={(v) => set({ speechReply: v ? 'text+audio' : 'audio' })} />
         </Row>
         <Row title="Mic sensitivity" hint="Higher picks up quiet speech, lower ignores noise">
@@ -64,6 +74,15 @@ export function SettingsSheet() {
         <Text style={styles.label}>System prompt</Text>
         <TextInput style={styles.input} value={s.systemPrompt} onChangeText={(t) => set({ systemPrompt: t })} multiline placeholderTextColor={colors.muted} />
 
+        <Text style={styles.section}>Background</Text>
+        <Text style={styles.rowHint}>
+          Downloads and agent tasks keep running while the app is minimised (you will see an ongoing notification). Some phones, OnePlus
+          included, still stop apps to save battery: allow unrestricted battery use for this app, and lock it in the recents screen.
+        </Text>
+        <Pressable style={[shared.btn, { marginTop: 10, alignSelf: 'flex-start' }]} onPress={() => native.requestIgnoreBatteryOptimizations()}>
+          <Text style={shared.btnText}>Allow unrestricted battery use</Text>
+        </Pressable>
+
         <Text style={styles.section}>Model engine</Text>
         <Row title="Thinking mode" hint="Lets the model reason before answering (slower). Applies after restart.">
           <Switch value={s.thinking} onValueChange={(v) => set({ thinking: v })} />
@@ -71,8 +90,8 @@ export function SettingsSheet() {
         <Row title="CPU threads" hint="0 = automatic. Applies after restart.">
           <Stepper value={s.threads} step={1} min={0} max={8} onChange={(v) => set({ threads: v })} />
         </Row>
-        <Row title="Context size" hint="Shared by chat and voice. Applies after restart.">
-          <Stepper value={s.contextSize} step={4096} min={4096} max={65536} format={(v) => `${v / 1024}k`} onChange={(v) => set({ contextSize: v })} />
+        <Row title="Context per conversation" hint="Chat, voice and each parallel agent get their own. Applies after restart.">
+          <Stepper value={s.contextPerSlot} step={2048} min={2048} max={16384} format={(v) => `${v / 1024}k`} onChange={(v) => set({ contextPerSlot: v })} />
         </Row>
         <Row title="Free memory when idle" hint="Stop the model after N minutes in the background (0 = never)">
           <Stepper value={s.idleStopMinutes} step={1} min={0} max={60} format={(v) => (v === 0 ? 'never' : `${v} min`)} onChange={(v) => set({ idleStopMinutes: v })} />

@@ -47,6 +47,16 @@ crashed() {
   grep -E "FATAL EXCEPTION|Process $PKG.* has died|ANR in $PKG|Fatal signal|SIGSEGV|SIGABRT" "$OUT/logcat.txt" | head -20
 }
 
+# print the actual stack trace of a crash so it shows up in the CI log
+show_crash() {
+  adb logcat -d -v time > "$OUT/logcat.txt"
+  echo "---------- crash details ----------"
+  grep -n -A45 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-220 | head -80
+  echo "---------- app log lines before the crash ----------"
+  grep -E "LiquidVoice|ReactNativeJS" "$OUT/logcat.txt" | tail -25 | cut -c1-240
+  echo "-----------------------------------"
+}
+
 echo "== launch"
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 sleep 25
@@ -85,7 +95,7 @@ adb shell input tap 540 520; sleep 1; adb shell input text "what is 2 plus 2"; s
 dump_ui agents2
 tap_desc "Start task" agents2; sleep 6; dump_ui agents3
 if ui_has "No model is downloaded" agents3 || ui_has "Failed" agents3; then ok "task without a model fails gracefully"; else echo "(task result not detected)"; fi
-if alive; then ok "app alive after starting an agent task (foreground service)"; else fail "app died when starting an agent task"; fi
+if alive; then ok "app alive after starting an agent task (foreground service)"; else fail "app died when starting an agent task"; show_crash; fi
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
 tap_desc "Start live voice" home; sleep 3; dump_ui mic

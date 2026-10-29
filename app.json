@@ -3,6 +3,7 @@
     "name": "LFM3 Pocket",
     "slug": "lfm3-pocket",
     "version": "0.1.0",
+    "scheme": "com.codervlsi.lfm3pocket",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
