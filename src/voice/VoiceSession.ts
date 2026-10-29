@@ -264,8 +264,9 @@ export class VoiceSession {
       case 'error': {
         const msg = String(e.error?.message ?? 'unknown realtime error');
         this.cb.log(`server error: ${msg}`);
-        // an empty-buffer commit etc. is not worth interrupting the user for
-        if (e.error?.type !== 'invalid_request_error') this.cb.onError(msg);
+        // an empty-buffer commit is harmless noise; anything else (e.g. "model does not support
+        // realtime") must reach the user instead of showing up later as a vague disconnect
+        if (!/buffer is empty|commit audio or create a message first/i.test(msg)) this.cb.onError(msg);
         return;
       }
       default:

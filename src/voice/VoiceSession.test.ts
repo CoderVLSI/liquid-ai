@@ -267,13 +267,14 @@ test('stop releases mic, speaker and audio route exactly once', async () => {
   assert.equal(t.session.state, 'ended');
 });
 
-test('server-side invalid requests are logged but do not interrupt the user', async () => {
+test('harmless empty-buffer errors are swallowed, real errors reach the user', async () => {
   const t = setup();
   await t.session.start();
-  t.client.emit({ type: 'error', error: { type: 'invalid_request_error', message: 'buffer is empty' } });
+  t.client.emit({ type: 'error', error: { type: 'invalid_request_error', message: 'input_audio_buffer.commit: the buffer is empty' } });
   assert.deepEqual(t.errors, []);
   t.client.emit({ type: 'error', error: { type: 'server_error', message: 'decode failed' } });
-  assert.deepEqual(t.errors, ['decode failed']);
+  t.client.emit({ type: 'error', error: { type: 'invalid_request_error', message: 'The current model does not support realtime transcription.' } });
+  assert.deepEqual(t.errors, ['decode failed', 'The current model does not support realtime transcription.']);
   await t.session.stop();
 });
 
