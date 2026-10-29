@@ -40,7 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/libllama_server.so
-          key: llama-server-${{ env.LLAMA_CPP_REF }}-${{ env.CPU_ARCH }}-${{ hashFiles('.github/workflows/build-apk.yml') }}
+          key: llama-server-v1-${{ env.LLAMA_CPP_REF }}-${{ env.CPU_ARCH }}
 
       - name: Fetch llama.cpp ${{ env.LLAMA_CPP_REF }}
         if: steps.cache.outputs.cache-hit != 'true'
@@ -147,7 +147,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
-          build-root-directory: android
 
       - name: Build release APK
         working-directory: android
