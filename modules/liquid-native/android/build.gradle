@@ -15,11 +15,7 @@ android {
   lintOptions {
     abortOnError false
   }
-  packagingOptions {
-    // The llama.cpp server is shipped as libllama_server.so and exec()'d from nativeLibraryDir.
-    // It must stay a plain file on disk, so never compress/strip-away or page-align it away.
-    jniLibs {
-      useLegacyPackaging = true
-    }
-  }
+  // libllama_server.so (the llama.cpp server) lives in src/main/jniLibs/arm64-v8a and is exec()'d from
+  // nativeLibraryDir at runtime, so the *app* must extract native libs: that is configured in app.json
+  // through expo-build-properties (android.useLegacyPackaging = true).
 }
