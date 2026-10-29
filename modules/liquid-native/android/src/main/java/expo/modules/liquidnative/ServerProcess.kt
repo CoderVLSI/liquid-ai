@@ -35,7 +35,7 @@ class ServerProcess(
     return try {
       p.exitValue()
       false
-    } catch (_: IllegalThreadStateException) {
+    } catch (ignored: IllegalThreadStateException) {
       true
     }
   }
@@ -76,7 +76,7 @@ class ServerProcess(
     synchronized(tail) { tail.clear() }
     try {
       pidFile.writeText(pid.toString())
-    } catch (_: IOException) {
+    } catch (ignored: IOException) {
     }
     Log.i(tag, "server started pid=$pid args=${args.joinToString(" ")}")
 
@@ -86,7 +86,7 @@ class ServerProcess(
     thread(name = "llama-wait", isDaemon = true) {
       val code = try {
         p.waitFor()
-      } catch (_: InterruptedException) {
+      } catch (ignored: InterruptedException) {
         -1
       }
       val expected: Boolean
@@ -103,7 +103,7 @@ class ServerProcess(
         mapOf(
           "code" to code,
           "expected" to expected,
-          "signal" to if (code > 128) code - 128 else 0,
+          "signal" to (if (code > 128) code - 128 else 0),
           "tail" to tailText().lines().takeLast(60).joinToString("\n"),
         ),
       )
@@ -131,7 +131,7 @@ class ServerProcess(
     try {
       p.exitValue()
       false
-    } catch (_: IllegalThreadStateException) {
+    } catch (ignored: IllegalThreadStateException) {
       true
     }
 
@@ -156,13 +156,13 @@ class ServerProcess(
     try {
       // Process.pid() exists on Android 13+
       return (java.lang.Process::class.java.getMethod("pid").invoke(p) as Long).toInt()
-    } catch (_: Throwable) {
+    } catch (ignored: Throwable) {
     }
     try {
       val f = p.javaClass.getDeclaredField("pid")
       f.isAccessible = true
       return f.getInt(p)
-    } catch (_: Throwable) {
+    } catch (ignored: Throwable) {
     }
     return -1
   }
@@ -178,7 +178,7 @@ class ServerProcess(
           Log.i(tag, "[server/$name] $line")
           emit("serverLog", mapOf("stream" to name, "line" to line))
         }
-      } catch (_: IOException) {
+      } catch (ignored: IOException) {
         // stream closed when the process exits
       }
     }

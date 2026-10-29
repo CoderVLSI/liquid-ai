@@ -117,12 +117,12 @@ class MicCapture(private val emit: (String, Map<String, Any?>) -> Unit) {
     running = false
     try {
       worker?.join(500)
-    } catch (_: InterruptedException) {
+    } catch (ignored: InterruptedException) {
     }
     worker = null
     try {
       record?.stop()
-    } catch (_: Throwable) {
+    } catch (ignored: Throwable) {
     }
     record?.release()
     record = null
@@ -185,11 +185,13 @@ class PcmPlayer {
     running = true
     writer = Thread({
       while (running) {
-        val chunk = try {
-          queue.poll(100, TimeUnit.MILLISECONDS)
-        } catch (_: InterruptedException) {
-          null
-        } ?: continue
+        var next: ByteArray? = null
+        try {
+          next = queue.poll(100, TimeUnit.MILLISECONDS)
+        } catch (ignored: InterruptedException) {
+          // fall through: next stays null
+        }
+        val chunk = next ?: continue
         val myEpoch = epoch
         var off = 0
         while (off < chunk.size && running && myEpoch == epoch) {
@@ -249,13 +251,13 @@ class PcmPlayer {
     epoch++
     try {
       writer?.join(300)
-    } catch (_: InterruptedException) {
+    } catch (ignored: InterruptedException) {
     }
     writer = null
     queue.clear()
     try {
       track?.stop()
-    } catch (_: Throwable) {
+    } catch (ignored: Throwable) {
     }
     track?.release()
     track = null

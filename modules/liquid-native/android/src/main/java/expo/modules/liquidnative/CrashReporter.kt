@@ -38,7 +38,7 @@ object CrashReporter {
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
         write(appCtx, "native", "thread: ${thread.name}\n$sw")
-      } catch (_: Throwable) {
+      } catch (ignored: Throwable) {
         // nothing sensible left to do while crashing
       }
       previous?.uncaughtException(thread, throwable)
