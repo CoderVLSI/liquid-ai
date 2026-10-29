@@ -1,0 +1,25 @@
+{
+  "name": "liquid-voice",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "prebuild": "expo prebuild --platform android --no-install"
+  },
+  "dependencies": {
+    "expo": "~54.0.0",
+    "expo-build-properties": "~1.0.10",
+    "expo-image-picker": "~17.0.11",
+    "expo-keep-awake": "~15.0.8",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  }
+}

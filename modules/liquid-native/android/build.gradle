@@ -1,0 +1,25 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.liquidnative'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.liquidnative"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+  packagingOptions {
+    // The llama.cpp server is shipped as libllama_server.so and exec()'d from nativeLibraryDir.
+    // It must stay a plain file on disk, so never compress/strip-away or page-align it away.
+    jniLibs {
+      useLegacyPackaging = true
+    }
+  }
+}
