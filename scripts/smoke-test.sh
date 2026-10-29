@@ -83,15 +83,20 @@ if ui_has "Download a model first" mic || ui_has "Models" mic; then ok "mic with
 adb shell input keyevent KEYCODE_BACK; sleep 1
 
 echo "== server binary runs on this device"
-BIN=$(adb shell "ls -d /data/app/*/$PKG-*/lib/*/libllama_server.so 2>/dev/null" | tr -d '\r' | head -1)
+# google_apis emulator images allow adb root; the app's install dir is not listable as the plain shell user.
+adb root >/dev/null 2>&1; adb wait-for-device; sleep 3
+APKPATH=$(adb shell pm path "$PKG" | head -1 | sed 's/^package://' | tr -d '\r')
+APPDIR=$(dirname "$APKPATH")
+echo "app dir: $APPDIR"
+adb shell "ls -la $APPDIR/lib/*/ 2>&1" | tr -d '\r' | head -20
+BIN=$(adb shell "ls $APPDIR/lib/*/libllama_server.so 2>/dev/null" | tr -d '\r' | head -1)
 echo "binary: ${BIN:-not found}"
 if [ -n "$BIN" ]; then
-  adb root >/dev/null 2>&1; sleep 2
-  V=$(adb shell "$BIN --version 2>&1" | tr -d '\r' | head -5)
+  V=$(adb shell "$BIN --version 2>&1" | tr -d '\r' | head -6)
   echo "$V"
-  if echo "$V" | grep -qiE "version|llama"; then ok "llama-server executes on Android"; else fail "llama-server did not run: $V"; fi
+  if echo "$V" | grep -qiE "version|llama|build"; then ok "llama-server executes on Android"; else fail "llama-server did not run: $V"; fi
 else
-  fail "libllama_server.so not found in /data/app (native libs not extracted?)"
+  fail "libllama_server.so not found next to the installed APK (native libs not extracted?)"
 fi
 
 echo "== final health"
