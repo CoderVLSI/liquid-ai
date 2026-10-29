@@ -78,6 +78,16 @@ tap_desc "Debug" home; sleep 4; dump_ui debug
 if ui_has "Logs" debug && ui_has "Crashes" debug; then ok "Debug sheet opens"; else fail "Debug sheet did not open"; fi
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
+tap_desc "Agents" home; sleep 3; dump_ui agents
+if ui_has "Start task" agents && ui_has "Atlas" agents; then ok "Agents sheet opens with the built-in team"; else fail "Agents sheet did not open"; fi
+# create a task with no model downloaded: it must fail gracefully, and starting the foreground service must not crash the app
+adb shell input tap 540 520; sleep 1; adb shell input text "what is 2 plus 2"; sleep 1
+dump_ui agents2
+tap_desc "Start task" agents2; sleep 6; dump_ui agents3
+if ui_has "No model is downloaded" agents3 || ui_has "Failed" agents3; then ok "task without a model fails gracefully"; else echo "(task result not detected)"; fi
+if alive; then ok "app alive after starting an agent task (foreground service)"; else fail "app died when starting an agent task"; fi
+adb shell input keyevent KEYCODE_BACK; sleep 2
+
 tap_desc "Start live voice" home; sleep 3; dump_ui mic
 if ui_has "Download a model first" mic || ui_has "Models" mic; then ok "mic with no model downloaded explains what to do"; else fail "mic tap with no model gave no feedback"; fi
 adb shell input keyevent KEYCODE_BACK; sleep 1

@@ -19,6 +19,10 @@ export interface Settings {
   /** stop the model server after this many minutes in the background (0 = never) */
   idleStopMinutes: number;
   port: number;
+  /** let agents use the internet (search + reading pages) */
+  agentWeb: boolean;
+  /** max model calls per agent task before it must wrap up */
+  agentMaxSteps: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -36,6 +40,8 @@ export const DEFAULT_SETTINGS: Settings = {
   silenceMs: 800,
   idleStopMinutes: 5,
   port: 18080,
+  agentWeb: true,
+  agentMaxSteps: 10,
 };
 
 export function mergeSettings(saved: unknown): Settings {

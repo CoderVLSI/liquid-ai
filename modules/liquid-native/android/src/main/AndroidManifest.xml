@@ -1,2 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- keep agents running in the background, and show reminders / results -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <service
+      android:name="expo.modules.liquidnative.AgentService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
+    <receiver
+      android:name="expo.modules.liquidnative.ReminderReceiver"
+      android:exported="false" />
+  </application>
 </manifest>

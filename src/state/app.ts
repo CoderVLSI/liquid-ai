@@ -19,7 +19,7 @@ export interface ChatMsg {
   t: number;
 }
 
-export type Sheet = 'none' | 'models' | 'debug' | 'settings';
+export type Sheet = 'none' | 'models' | 'debug' | 'settings' | 'agents';
 
 export interface Attachment {
   uri: string;

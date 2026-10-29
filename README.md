@@ -59,6 +59,19 @@ Voice needs the **Omni** or **Audio** model. Images need **Omni** or **VL**. The
 
 Downloads pause/resume (and survive app restarts); sizes are verified exactly.
 
+## Agents (a Grok-Bot-style teammate, on your phone)
+
+Tap the **network icon** in the header. Give a teammate a task and it works on it in the background, using tools, and comes back with a result or a question.
+
+- **Teammates:** Atlas (coordinator), Scout (researcher), Scribe (notes) and any you add. Atlas can **delegate** sub-tasks to the others and wait for their results (up to 2 levels deep).
+- **Tools:** calculator (exact, no `eval`), date/time, notebook (save/search/delete), reminders (real Android notifications, even if the app is closed), web search and "read this page" (can be switched off for fully offline use).
+- **Asks you when it must:** a task can pause with a question, shows a "needs you" notification, and continues after you answer.
+- **Scheduled and recurring:** start later, or repeat hourly / daily.
+- **Survives restarts:** every step is saved; interrupted tasks resume. While tasks are active a foreground-service notification keeps Android from killing the app and the model.
+- **See what it did:** every task has a step-by-step timeline (tool calls, results, hand-offs).
+
+It uses the loaded LFM3 model's tool calling; the 1.7B text model is the natural choice. It does not control other apps (that needs an Android Accessibility Service, a bigger and riskier feature) and it is a small on-device model: expect simple, short tasks to work well and long multi-step research to be hit-and-miss and slow. Agents pause while a live voice conversation or chat reply is running.
+
 ## Debugging crashes
 
 Open **🐞 → Debug** (chip icon in the header):

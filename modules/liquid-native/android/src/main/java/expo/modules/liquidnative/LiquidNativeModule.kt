@@ -197,6 +197,24 @@ class LiquidNativeModule : Module() {
       downloader.isActive(id)
     }
 
+    // ---- agents: background keep-alive, notifications, reminders -------------------------------
+
+    Function("keepAlive") { on: Boolean, text: String ->
+      AgentService.set(context, on, text)
+    }
+
+    Function("notify") { id: Int, title: String, body: String ->
+      Notifier.post(context, id, title, body)
+    }
+
+    Function("scheduleReminder") { id: Int, atMs: Double, title: String, body: String ->
+      Notifier.schedule(context, id, atMs.toLong(), title, body)
+    }
+
+    Function("cancelReminder") { id: Int ->
+      Notifier.cancel(context, id)
+    }
+
     // ---- diagnostics ---------------------------------------------------------------------------
 
     // Mirrors the app's JS log into logcat (tag LiquidVoice) so `adb logcat -s LiquidVoice` shows everything.

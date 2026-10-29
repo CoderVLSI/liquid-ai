@@ -25,6 +25,9 @@ function Header() {
         <Text style={styles.caret}>▾</Text>
       </Pressable>
       <View style={styles.headerBtns}>
+        <Pressable style={styles.hBtn} onPress={() => openSheet('agents')} accessibilityLabel="Agents">
+          <Icon name="omni" size={24} />
+        </Pressable>
         <Pressable style={styles.hBtn} onPress={newChat} accessibilityLabel="New chat">
           <Icon name="plus" size={24} />
         </Pressable>

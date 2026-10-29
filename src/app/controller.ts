@@ -18,6 +18,7 @@ import { RealtimeClient } from '../net/RealtimeClient';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
 import { buildRequest } from '../chat/history';
+import { startAgents } from '../agents/runner';
 
 let filesDir = '';
 let genAbort: AbortController | null = null;
@@ -82,6 +83,7 @@ export async function boot() {
   if (appStore.get().crashes.length) log.warn('boot', `${appStore.get().crashes.length} crash report(s) from earlier runs`);
 
   RNAppState.addEventListener('change', onAppState);
+  void startAgents();
 
   // Warm the model so the first message is fast.
   if (settings.activeModel) {

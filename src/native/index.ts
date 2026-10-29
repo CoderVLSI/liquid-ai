@@ -66,6 +66,10 @@ interface Raw {
   clearCrashReports(): void;
   writeCrash(kind: string, text: string): void;
   log(level: string, message: string): void;
+  keepAlive(on: boolean, text: string): void;
+  notify(id: number, title: string, body: string): void;
+  scheduleReminder(id: number, atMs: number, title: string, body: string): void;
+  cancelReminder(id: number): void;
   getExitReasons(): ExitReason[];
   readLogcat(maxLines: number): Promise<string>;
   addListener(event: string, cb: (payload: any) => void): { remove(): void };
@@ -113,6 +117,10 @@ export const native = {
   clearCrashReports: () => mod?.clearCrashReports(),
   writeCrash: (kind: string, text: string) => mod?.writeCrash(kind, text),
   log: (level: string, message: string) => mod?.log(level, message),
+  keepAlive: (on: boolean, text: string) => mod?.keepAlive(on, text),
+  notify: (id: number, title: string, body: string) => mod?.notify(id, title, body),
+  scheduleReminder: (id: number, atMs: number, title: string, body: string) => mod?.scheduleReminder(id, atMs, title, body),
+  cancelReminder: (id: number) => mod?.cancelReminder(id),
   exitReasons: () => (mod ? mod.getExitReasons() : []),
   logcat: (n: number) => need().readLogcat(n),
 

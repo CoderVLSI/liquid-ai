@@ -6,6 +6,7 @@ import { ChatScreen } from './src/ui/ChatScreen';
 import { ModelsSheet } from './src/ui/ModelsSheet';
 import { DebugSheet } from './src/ui/DebugSheet';
 import { SettingsSheet } from './src/ui/SettingsSheet';
+import { AgentsSheet } from './src/ui/AgentsSheet';
 import { useApp } from './src/ui/hooks';
 import { boot } from './src/app/controller';
 import { colors } from './src/ui/theme';
@@ -39,6 +40,7 @@ function Root() {
       <ChatScreen />
       <ModelsSheet />
       <SettingsSheet />
+      <AgentsSheet />
       <DebugSheet />
     </>
   );
