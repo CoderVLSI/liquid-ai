@@ -15,7 +15,7 @@ const MAX_ENTRIES = 3000;
 let seq = 0;
 let entries: LogEntry[] = [];
 const listeners = new Set<() => void>();
-let sink: ((line: string) => void) | null = null;
+let sink: ((line: string, entry: LogEntry) => void) | null = null;
 let notifyTimer: ReturnType<typeof setTimeout> | null = null;
 
 function notifySoon() {
@@ -38,7 +38,7 @@ function add(level: Level, tag: string, msg: string) {
   entries.push(e);
   if (entries.length > MAX_ENTRIES) entries = entries.slice(entries.length - MAX_ENTRIES);
   try {
-    sink?.(formatEntry(e) + '\n');
+    sink?.(formatEntry(e) + '\n', e);
   } catch {
     // logging must never throw
   }
@@ -71,7 +71,7 @@ export const log = {
       listeners.delete(l);
     };
   },
-  setSink: (s: ((line: string) => void) | null) => {
+  setSink: (s: ((line: string, entry: LogEntry) => void) | null) => {
     sink = s;
   },
   dump: (max = 800): string => entries.slice(-max).map(formatEntry).join('\n'),

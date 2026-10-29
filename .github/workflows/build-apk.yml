@@ -30,8 +30,19 @@ jobs:
   #    and launches it as a child process (llama.rn does not know the lfm3 architecture yet).
   # ---------------------------------------------------------------------------------------------
   server:
+    name: server (${{ matrix.abi }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # the real thing, for the phone
+          - abi: arm64-v8a
+            cpu_flags: ${{ inputs.cpu_arch || 'armv8.6-a+dotprod+i8mm+fp16' }}
+          # only used by the emulator smoke test (CI runners are x86_64)
+          - abi: x86_64
+            cpu_flags: ''
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: out/libllama_server.so
-          key: llama-server-v1-${{ env.LLAMA_CPP_REF }}-${{ env.CPU_ARCH }}
+          key: llama-server-v1-${{ matrix.abi }}-${{ env.LLAMA_CPP_REF }}-${{ matrix.cpu_flags }}
 
       - name: Fetch llama.cpp ${{ env.LLAMA_CPP_REF }}
         if: steps.cache.outputs.cache-hit != 'true'
@@ -57,9 +68,11 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
           NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}"
           echo "NDK=$NDK"; ls "$NDK" | head -3
+          ARCH_FLAG=""
+          if [ -n "${{ matrix.cpu_flags }}" ]; then ARCH_FLAG="-DGGML_CPU_ARM_ARCH=${{ matrix.cpu_flags }}"; fi
           cmake -S llama.cpp -B build -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-28 \
             -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release \
@@ -67,7 +80,7 @@ jobs:
             -DGGML_NATIVE=OFF \
             -DGGML_OPENMP=OFF \
             -DGGML_LLAMAFILE=OFF \
-            -DGGML_CPU_ARM_ARCH="$CPU_ARCH" \
+            $ARCH_FLAG \
             -DLLAMA_OPENSSL=OFF \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
@@ -92,11 +105,11 @@ jobs:
           ls -la out/
           NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}"
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -h out/libllama_server.so | grep -E "Class|Machine|Type"
-          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -d out/libllama_server.so | grep NEEDED
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -d out/libllama_server.so | grep NEEDED || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: llama-server-arm64
+          name: llama-server-${{ matrix.abi }}
           path: out/libllama_server.so
           if-no-files-found: error
 
@@ -131,7 +144,7 @@ jobs:
       - name: Add the server binary
         uses: actions/download-artifact@v4
         with:
-          name: llama-server-arm64
+          name: llama-server-arm64-v8a
           path: modules/liquid-native/android/src/main/jniLibs/arm64-v8a
 
       - name: Generate the native Android project
@@ -183,3 +196,81 @@ jobs:
           gh release create "$TAG" dist/*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --title "Liquid Voice APK ($GITHUB_REF_NAME @ ${GITHUB_SHA::7})" \
             --notes "Built from $GITHUB_SHA. llama.cpp $LLAMA_CPP_REF, CPU features $CPU_ARCH. Open this page on the phone and tap the .apk to install."
+
+  # ---------------------------------------------------------------------------------------------
+  # 3) Launch the app in a real Android emulator and tap through it. Catches "crashes before it
+  #    even opens": JS errors, missing native module, bad manifest, missing server binary...
+  #    Uses an x86_64 build of the same code (the runner has KVM; the release APK stays arm64).
+  # ---------------------------------------------------------------------------------------------
+  smoke:
+    needs: server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Add the x86_64 server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: llama-server-x86_64
+          path: modules/liquid-native/android/src/main/jniLibs/x86_64
+
+      - name: Target x86_64 (emulator) instead of arm64
+        run: |
+          sed -i 's/"buildArchs": \["arm64-v8a"\]/"buildArchs": ["x86_64"]/' app.json
+          grep -n buildArchs app.json
+
+      - run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Gradle settings
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g
+          org.gradle.daemon=false
+          EOF
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
+
+      - name: Build emulator APK
+        working-directory: android
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch in emulator and tap through the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/smoke-test.sh android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload smoke-test evidence (logcat, screenshots, UI dumps)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-output
+          path: smoke-out/
+          if-no-files-found: ignore

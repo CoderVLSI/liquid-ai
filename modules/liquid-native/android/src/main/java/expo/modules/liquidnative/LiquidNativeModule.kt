@@ -199,6 +199,15 @@ class LiquidNativeModule : Module() {
 
     // ---- diagnostics ---------------------------------------------------------------------------
 
+    // Mirrors the app's JS log into logcat (tag LiquidVoice) so `adb logcat -s LiquidVoice` shows everything.
+    Function("log") { level: String, message: String ->
+      when (level) {
+        "error" -> Log.e(tag, message)
+        "warn" -> Log.w(tag, message)
+        else -> Log.i(tag, message)
+      }
+    }
+
     Function("getCrashReports") {
       CrashReporter.pending(context)
     }

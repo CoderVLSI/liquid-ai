@@ -65,6 +65,7 @@ interface Raw {
   getCrashReports(): CrashReport[];
   clearCrashReports(): void;
   writeCrash(kind: string, text: string): void;
+  log(level: string, message: string): void;
   getExitReasons(): ExitReason[];
   readLogcat(maxLines: number): Promise<string>;
   addListener(event: string, cb: (payload: any) => void): { remove(): void };
@@ -111,6 +112,7 @@ export const native = {
   crashReports: () => (mod ? mod.getCrashReports() : []),
   clearCrashReports: () => mod?.clearCrashReports(),
   writeCrash: (kind: string, text: string) => mod?.writeCrash(kind, text),
+  log: (level: string, message: string) => mod?.log(level, message),
   exitReasons: () => (mod ? mod.getExitReasons() : []),
   logcat: (n: number) => need().readLogcat(n),
 

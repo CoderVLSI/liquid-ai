@@ -42,7 +42,11 @@ export async function boot() {
 
   const info = native.info();
   filesDir = info.filesDir;
-  log.setSink((line) => native.writeText(`${filesDir}/logs/app.log`, line, true));
+  log.setSink((line, e) => {
+    native.writeText(`${filesDir}/logs/app.log`, line, true);
+    // everything except noisy debug lines also goes to `adb logcat -s LiquidVoice`
+    if (e.level !== 'debug' && e.tag !== 'console') native.log(e.level, `[${e.tag}] ${e.msg}`);
+  });
   log.info('boot', `${info.device}, Android SDK ${info.sdk}, ${info.cores} cores, ${Math.round(info.totalRamBytes / 1e9)} GB RAM`);
   log.info('boot', `server binary present=${info.serverBinaryPresent} (${Math.round(info.serverBinarySize / 1e6)} MB), abis=${info.abis.join(',')}`);
 

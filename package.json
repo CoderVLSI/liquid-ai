@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
-    "prebuild": "expo prebuild --platform android --no-install"
+    "prebuild": "expo prebuild --platform android --no-install",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "expo": "~54.0.0",
@@ -16,6 +17,7 @@
     "expo-image-picker": "~17.0.11",
     "expo-keep-awake": "~15.0.8",
     "expo-splash-screen": "~31.0.13",
+    "expo-system-ui": "~6.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0"
