@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Sheet } from './Sheet';
-import { useAgents, useApp } from './hooks';
+import { useAgents, useApp, useConnections } from './hooks';
 import { colors, shared } from './theme';
-import { addAgent, answerTask, cancelTask, clearFinished, enqueue, notesApi, removeAgent, removeTask, retryTask } from '../agents/runner';
+import { addAgent, answerTask, approveTask, cancelTask, clearFinished, enqueue, notesApi, removeAgent, removeTask, retryTask } from '../agents/runner';
 import { openSheet, setSettings } from '../app/controller';
 import type { AgentTask, Step, TaskStatus } from '../agents/types';
+import { connectSlack, connStore, disconnectGoogle, disconnectSlack, startGoogleSignIn } from '../connections/store';
+import { REDIRECT_URI, SCOPE_LABELS } from '../connections/google';
+import type { GoogleScope } from '../connections/google';
 
 const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   scheduled: { label: 'Scheduled', color: colors.muted },
@@ -108,6 +111,7 @@ function TaskCard({ task, depth = 0 }: { task: AgentTask; depth?: number }) {
   const agent = agents.find((a) => a.id === task.agentId);
   const st = STATUS[task.status];
   const children = tasks.filter((t) => t.parentId === task.id);
+  const approval = task.pending.find((p) => p.kind === 'approve');
   const question = task.pending.find((p) => p.kind === 'ask')?.question;
   const finished = task.status === 'done' || task.status === 'failed' || task.status === 'cancelled';
 
@@ -128,6 +132,23 @@ function TaskCard({ task, depth = 0 }: { task: AgentTask; depth?: number }) {
             {task.stepCount ? ` · ${task.stepCount} model call${task.stepCount > 1 ? 's' : ''}` : ''}
           </Text>
         </Pressable>
+
+        {task.status === 'waiting' && approval ? (
+          <View style={styles.ask}>
+            <Text style={styles.askQ}>🔐 {task.pending.length > 1 ? 'Approval needed' : 'Approve this action?'}</Text>
+            <View style={styles.result}>
+              <Text style={styles.resultText} selectable>{approval.question}</Text>
+            </View>
+            <View style={styles.actions}>
+              <Pressable style={[shared.btn, shared.btnPrimary]} onPress={() => void approveTask(task.id, true)}>
+                <Text style={[shared.btnText, shared.btnTextPrimary]}>Approve</Text>
+              </Pressable>
+              <Pressable style={[shared.btn, shared.btnDanger]} onPress={() => void approveTask(task.id, false)}>
+                <Text style={shared.btnText}>Deny</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {task.status === 'waiting' && question ? (
           <View style={styles.ask}>
@@ -227,11 +248,108 @@ function TasksTab() {
   );
 }
 
+const ALL_SCOPES: GoogleScope[] = ['calendar', 'gmailRead', 'gmailSend', 'drive'];
+
+function ConnectionsTab() {
+  const slack = useConnections((s) => s.slack);
+  const google = useConnections((s) => s.google);
+  const pending = useConnections((s) => s.pendingGoogle);
+  const busy = useConnections((s) => s.busy);
+  const error = useConnections((s) => s.error);
+  const [token, setToken] = useState('');
+  const [clientId, setClientId] = useState(google?.clientId ?? '');
+  const [scopes, setScopes] = useState<GoogleScope[]>(google?.scopes ?? ['calendar', 'gmailRead', 'drive']);
+  const toggle = (s: GoogleScope) => setScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
+
+  return (
+    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <Text style={styles.meta}>
+        Connect your accounts so agents can read and (with your approval) act on them. Credentials stay on this phone, in the app's private storage,
+        and are only ever sent to Slack / Google.
+      </Text>
+      {error ? (
+        <View style={[styles.card, { borderColor: colors.danger, marginTop: 10 }]}>
+          <Text style={styles.error} selectable>{error}</Text>
+          <Pressable onPress={() => connStore.set({ error: null })} hitSlop={8}>
+            <Text style={{ color: colors.accent, fontSize: 13, marginTop: 6 }}>Dismiss</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <Text style={styles.label}>Slack</Text>
+      <View style={styles.card}>
+        {slack ? (
+          <>
+            <Text style={styles.who}>✅ {slack.team} · {slack.user}</Text>
+            <Text style={styles.meta}>Agents can list channels, read recent messages and (after approval) post.</Text>
+            <View style={styles.actions}>
+              <Pressable style={[shared.btn, shared.btnDanger]} onPress={disconnectSlack}>
+                <Text style={shared.btnText}>Disconnect</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.meta}>
+              1. Go to api.slack.com/apps → Create New App → From scratch.{'\n'}
+              2. OAuth & Permissions → Bot Token Scopes: channels:read, groups:read, channels:history, groups:history, chat:write, users:read.{'\n'}
+              3. Install to Workspace, copy the "Bot User OAuth Token" (xoxb-…) and paste it here.{'\n'}
+              4. In Slack, invite the bot to channels: /invite @yourbot
+            </Text>
+            <TextInput style={[styles.input, { marginTop: 8 }]} value={token} onChangeText={setToken} placeholder="xoxb-…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} secureTextEntry />
+            <Pressable style={[shared.btn, shared.btnPrimary, { marginTop: 10 }, (!token.trim() || busy === 'slack') && { opacity: 0.4 }]} disabled={!token.trim() || busy === 'slack'} onPress={() => void connectSlack(token)}>
+              <Text style={[shared.btnText, shared.btnTextPrimary]}>{busy === 'slack' ? 'Checking…' : 'Connect Slack'}</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+
+      <Text style={styles.label}>Google (Calendar, Gmail, Drive)</Text>
+      <View style={styles.card}>
+        {google ? (
+          <>
+            <Text style={styles.who}>✅ {google.email ?? 'Google account'}</Text>
+            <Text style={styles.meta}>Allowed: {google.scopes.map((s) => SCOPE_LABELS[s]).join(', ')}</Text>
+            <View style={styles.actions}>
+              <Pressable style={shared.btn} onPress={() => startGoogleSignIn(google.clientId, google.scopes)}>
+                <Text style={shared.btnText}>Re-authorize</Text>
+              </Pressable>
+              <Pressable style={[shared.btn, shared.btnDanger]} onPress={disconnectGoogle}>
+                <Text style={shared.btnText}>Disconnect</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.meta}>
+              Google needs an OAuth client from your own Google Cloud project (free):{'\n'}
+              1. console.cloud.google.com → create a project → enable the Calendar, Gmail and Drive APIs.{'\n'}
+              2. APIs & Services → OAuth consent screen: External, add yourself as a test user.{'\n'}
+              3. Credentials → Create OAuth client ID → type Android. Package name: com.codervlsi.lfm3pocket. SHA-1: the signing key of the APK you installed (see README). Under Advanced, enable "custom URI scheme".{'\n'}
+              4. Paste the Client ID below and sign in. Redirect used: {REDIRECT_URI}
+            </Text>
+            <TextInput style={[styles.input, { marginTop: 8 }]} value={clientId} onChangeText={setClientId} placeholder="123-abc.apps.googleusercontent.com" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+            <View style={[styles.row, { marginTop: 10 }]}>
+              {ALL_SCOPES.map((s) => (
+                <Chip key={s} label={SCOPE_LABELS[s]} on={scopes.includes(s)} onPress={() => toggle(s)} />
+              ))}
+            </View>
+            <Pressable style={[shared.btn, shared.btnPrimary, { marginTop: 12 }, busy === 'google' && { opacity: 0.4 }]} disabled={busy === 'google'} onPress={() => startGoogleSignIn(clientId, scopes)}>
+              <Text style={[shared.btnText, shared.btnTextPrimary]}>{pending ? 'Waiting for Google… (tap to retry)' : 'Sign in with Google'}</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
 function TeamTab() {
   const agents = useAgents((s) => s.agents);
   const notes = useAgents((s) => s.notes);
   const web = useApp((s) => s.settings.agentWeb);
   const parallel = useApp((s) => s.settings.agentParallel);
+  const confirm = useApp((s) => s.settings.confirmWrites);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('');
   const [role, setRole] = useState('');
@@ -245,6 +363,16 @@ function TeamTab() {
             <Text style={styles.meta}>Lets agents search the web and read pages. Off keeps every task fully offline.</Text>
           </View>
           <Switch value={web} onValueChange={(v) => setSettings({ agentWeb: v })} />
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.rowBetween}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={shared.h2}>Ask before acting</Text>
+            <Text style={styles.meta}>Agents must get your approval before posting to Slack, sending email or creating calendar events. Strongly recommended.</Text>
+          </View>
+          <Switch value={confirm} onValueChange={(v) => setSettings({ confirmWrites: v })} />
         </View>
       </View>
 
@@ -322,7 +450,7 @@ export function AgentsSheet() {
   const visible = useApp((s) => s.sheet === 'agents');
   const running = useAgents((s) => s.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length);
   const waiting = useAgents((s) => s.tasks.filter((t) => t.status === 'waiting').length);
-  const [tab, setTab] = useState<'tasks' | 'team'>('tasks');
+  const [tab, setTab] = useState<'tasks' | 'team' | 'connect'>('tasks');
 
   return (
     <Sheet visible={visible} title="Agents" onClose={() => openSheet('none')}>
@@ -333,10 +461,13 @@ export function AgentsSheet() {
           </Text>
         </Pressable>
         <Pressable style={[styles.tab, tab === 'team' && styles.tabOn]} onPress={() => setTab('team')}>
-          <Text style={[styles.tabText, tab === 'team' && { color: colors.accent }]}>Team & notes</Text>
+          <Text style={[styles.tabText, tab === 'team' && { color: colors.accent }]}>Team</Text>
+        </Pressable>
+        <Pressable style={[styles.tab, tab === 'connect' && styles.tabOn]} onPress={() => setTab('connect')}>
+          <Text style={[styles.tabText, tab === 'connect' && { color: colors.accent }]}>Connections</Text>
         </Pressable>
       </View>
-      {visible ? tab === 'tasks' ? <TasksTab /> : <TeamTab /> : null}
+      {visible ? tab === 'tasks' ? <TasksTab /> : tab === 'team' ? <TeamTab /> : <ConnectionsTab /> : null}
     </Sheet>
   );
 }

@@ -175,6 +175,14 @@ jobs:
           "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" | grep -i -E "extractNativeLibs|usesCleartextTraffic|RECORD_AUDIO"
           "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" | grep -q 'extractNativeLibs.*=true\|extractNativeLibs.*0xffffffff'
 
+      - name: Signing certificate fingerprint (needed to register Google sign-in)
+        run: |
+          SHA1=$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android 2>/dev/null | grep 'SHA1:' | head -1 | sed 's/.*SHA1: *//')
+          echo "SHA1=$SHA1" >> "$GITHUB_ENV"
+          echo "### Signing certificate SHA-1 (for the Google OAuth Android client)" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$SHA1\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-1: $SHA1"
+
       - name: Name the APK
         run: |
           mkdir -p dist
@@ -195,7 +203,7 @@ jobs:
           gh release delete "$TAG" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
           gh release create "$TAG" dist/*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --title "Liquid Voice APK ($GITHUB_REF_NAME @ ${GITHUB_SHA::7})" \
-            --notes "Built from $GITHUB_SHA. llama.cpp $LLAMA_CPP_REF, CPU features $CPU_ARCH. Open this page on the phone and tap the .apk to install."
+            --notes "Built from $GITHUB_SHA. llama.cpp $LLAMA_CPP_REF, CPU features $CPU_ARCH. Open this page on the phone and tap the .apk to install. Signing certificate SHA-1 (for Google sign-in): $SHA1"
 
   # ---------------------------------------------------------------------------------------------
   # 3) Launch the app in a real Android emulator and tap through it. Catches "crashes before it

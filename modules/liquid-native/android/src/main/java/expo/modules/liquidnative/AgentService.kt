@@ -44,23 +44,37 @@ class AgentService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     val text = intent?.getStringExtra("text") ?: "Agents are working"
-    ensureChannels(this)
-    val n = builder(this, CH_WORK)
-      .setSmallIcon(android.R.drawable.stat_notify_sync)
-      .setContentTitle("LFM3 Pocket agents")
-      .setContentText(text)
-      .setOngoing(true)
-      .setContentIntent(openAppIntent(this))
-      .build()
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(FG_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-      } else {
-        startForeground(FG_ID, n)
-      }
+    // Android kills the app if startForeground() is not reached quickly, so build defensively
+    // and always make that call, even if the pretty notification could not be built.
+    val n: Notification = try {
+      ensureChannels(this)
+      builder(this, CH_WORK)
+        .setSmallIcon(android.R.drawable.stat_notify_sync)
+        .setContentTitle("LFM3 Pocket")
+        .setContentText(text)
+        .setOngoing(true)
+        .setContentIntent(openAppIntent(this))
+        .build()
     } catch (e: Throwable) {
-      Log.w(TAG, "startForeground failed: ${e.message}")
-      stopSelf()
+      Log.w(TAG, "notification build failed: ${e.message}")
+      builder(this, CH_WORK).setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("LFM3 Pocket").build()
+    }
+    var started = false
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      try {
+        startForeground(FG_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        started = true
+      } catch (e: Throwable) {
+        Log.w(TAG, "typed startForeground failed: ${e.javaClass.simpleName}: ${e.message}")
+      }
+    }
+    if (!started) {
+      try {
+        startForeground(FG_ID, n)
+      } catch (e: Throwable) {
+        Log.e(TAG, "startForeground failed: ${e.javaClass.simpleName}: ${e.message}")
+        stopSelf()
+      }
     }
     return START_NOT_STICKY
   }

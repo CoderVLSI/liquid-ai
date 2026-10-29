@@ -10,6 +10,9 @@ type Source = () => string | null;
 const sources = new Map<string, Source>();
 let last: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+let onSince = 0;
+/** Android crashes an app that stops a foreground service right after starting it, so never switch off sooner than this. */
+const MIN_ON_MS = 8000;
 
 export function registerBackgroundSource(name: string, source: Source) {
   sources.set(name, source);
@@ -27,13 +30,22 @@ function compute(): string | null {
 /** Recomputes the notification text. Cheap to call often; updates the system at most every 1.2 s. */
 export function refreshBackground() {
   if (timer) return;
+  schedule(1200);
+}
+
+function schedule(ms: number) {
   timer = setTimeout(() => {
     timer = null;
     const text = compute();
     if (text === last) return;
+    if (text == null && last != null && Date.now() - onSince < MIN_ON_MS) {
+      schedule(MIN_ON_MS - (Date.now() - onSince) + 200); // try again once it has been on long enough
+      return;
+    }
+    if (text != null && last == null) onSince = Date.now();
     last = text;
     native.keepAlive(text != null, text ?? '');
-  }, 1200);
+  }, ms);
 }
 
 export function inBackground(): boolean {
