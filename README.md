@@ -71,7 +71,7 @@ Any remote **MCP server** (streamable HTTP; `src/mcp/`) can be added: its tools 
 
 ### Evolution
 
-Your buddy grows as you use it: +1 XP per chat reply, +2 per voice turn, +3 per finished agent task, +5 the first time each day (with a day streak). **150 XP evolves it to Stage 2, 500 XP to Stage 3** (an evolution scene plays: Settings → *Preview evolution* shows it any time). From Stage 2 it earns **Mega charges** (one with Stage 2, then one per 250 XP, up to 3): spend one on the buddy screen for an hour of Mega form. Art for the forms goes in `assets/buddies/<id>/stage2|stage3|mega/` (same pose file names; Mega needs only idle/blink/talk/happy); without it the app shows the base art with an aura. Rules: `src/buddies/evolution.ts`; art prompt for Codex: `docs/CODEX_EVOLUTIONS_PROMPT.md`.
+Your buddy grows as you use it: +1 XP per chat reply, +2 per voice turn, +3 per finished agent task, +5 the first time each day (with a day streak). **150 XP evolves it to Stage 2, 500 XP to Stage 3** (an evolution scene plays: Settings → *Preview evolution* shows it any time). From Stage 2 it earns **Mega charges** (one with Stage 2, then one per 250 XP, up to 3): spend one on the buddy screen for an hour of Mega form. Art for the forms goes in `assets/buddies/<id>/stage2|stage3|mega/` (same pose file names; Mega needs only idle/blink/talk/happy); without it the app shows the base art with an aura. Rules: `src/buddies/evolution.ts`.
 
 ### Buddies (mascots)
 
