@@ -14,6 +14,8 @@ export interface StreamOptions {
   messages: ChatRequestMessage[];
   signal?: AbortSignal;
   maxTokens?: number;
+  /** let the model think before answering; false asks the chat template to switch thinking off for this request */
+  thinking?: boolean;
   onText: (delta: string) => void;
   onReasoning?: (delta: string) => void;
 }
@@ -38,6 +40,8 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
       stream: true,
       // reuse the already-processed start of the conversation: only the new message is read each turn
       cache_prompt: true,
+      // the server flag alone did not stop this model from thinking: say it in the request too (ignored if unsupported)
+      chat_template_kwargs: { enable_thinking: !!o.thinking },
       // greedy decoding (temperature 0) makes a small model loop on stock phrases like "How can I help you today?"
       temperature: 0.3,
       min_p: 0.15,

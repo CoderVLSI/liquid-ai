@@ -13,7 +13,8 @@ import { FadeIn } from './FadeIn';
 import { ms } from './motion';
 import { AgentScreen } from './AgentScreen';
 import { BuddyView } from './BuddyView';
-import { dismissCrashes, newChat, openSheet, restartServer, sendMessage } from '../app/controller';
+import { dismissCrashes, newChat, openSheet, restartServer, sendMessage, setMode, toast } from '../app/controller';
+import { enqueue } from '../agents/runner';
 import { suggestFollowUps } from '../chat/followups';
 import { getModel } from '../models/catalog';
 import type { ChatMsg } from '../state/app';
@@ -149,11 +150,29 @@ function FollowUps() {
   const on = useApp((st) => st.settings.followUps);
   const last = useApp((st) => st.messages[st.messages.length - 1]);
   const generating = useApp((st) => st.generating);
+  const web = useApp((st) => st.settings.agentWeb);
+  const asked = useApp((st) => [...st.messages].reverse().find((m) => m.role === 'user' && !m.voice && m.text.trim())?.text.trim() ?? '');
   if (!on || generating || !last || last.role !== 'assistant' || last.error || last.voice || last.streaming) return null;
   const chips = suggestFollowUps(last.text);
-  if (!chips.length) return null;
+  // a small model often does not know people, places or recent things: hand the question to the agent, which can look it up
+  const canLookUp = web && asked.length > 1 && asked.length <= 80;
+  if (!chips.length && !canLookUp) return null;
   return (
     <FadeIn key={last.id} y={6} delay={120} style={styles.followRow}>
+      {canLookUp ? (
+        <Pressable
+          style={[styles.followChip, { borderColor: colors.accent }]}
+          onPress={() => {
+            enqueue({ agentId: 'atlas', goal: `Look up "${asked}" and tell me briefly who or what it is` });
+            setMode('agent');
+            toast('Looking it up…', 1500);
+          }}
+          pressScale={0.94}
+          accessibilityLabel="Look it up online"
+        >
+          <Text style={styles.followText}>🔎 Look it up</Text>
+        </Pressable>
+      ) : null}
       {chips.map((c) => (
         <Pressable key={c} style={styles.followChip} onPress={() => void sendMessage(c)} pressScale={0.94} accessibilityLabel={`Follow up: ${c}`}>
           <Text style={styles.followText}>{c}</Text>

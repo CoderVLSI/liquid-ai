@@ -483,6 +483,7 @@ export async function sendMessage(rawText: string) {
     const res = await streamChat({
       baseUrl: server.baseUrl(appStore.get().settings),
       messages: req,
+      thinking: appStore.get().settings.thinking,
       signal: ctl.signal,
       onText: (d) => {
         if (!firstAt) firstAt = Date.now();

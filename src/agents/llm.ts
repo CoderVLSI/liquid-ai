@@ -37,6 +37,7 @@ export class ServerLlm implements LlmClient {
       model: 'local',
       messages: [{ role: 'system', content: req.system }, ...req.messages],
       stream: false,
+      chat_template_kwargs: { enable_thinking: false }, // agents need fast, direct tool calls
       temperature: 0.2,
       max_tokens: 1024,
     };
