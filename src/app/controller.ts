@@ -15,6 +15,8 @@ import { downloads } from '../models/downloads';
 import { server } from '../server/ServerManager';
 import { streamChat } from '../net/ChatClient';
 import { RealtimeClient } from '../net/RealtimeClient';
+import * as Clipboard from 'expo-clipboard';
+import { tap } from '../lib/haptics';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
 import { buildRequest } from '../chat/history';
@@ -260,6 +262,40 @@ export function clearAttachment() {
   appStore.set({ attachment: null });
 }
 
+/** Start loading the model as soon as the user touches the message box, so the first send does not wait for it. */
+export function warmUp() {
+  const s = appStore.get().settings;
+  const id = s.activeModel;
+  if (!id || !downloads.readyIds().includes(id)) return;
+  server.ensure(id, s).catch(() => {});
+}
+
+export async function copyText(text: string) {
+  try {
+    await Clipboard.setStringAsync(text);
+    tap('success');
+    toast('Copied', 1200);
+  } catch {
+    toast('Could not copy');
+  }
+}
+
+/** Throws away the last reply and asks again. Only for typed messages (a spoken one has no text to resend). */
+export async function regenerate() {
+  const s = appStore.get();
+  if (s.generating) return;
+  const i = s.messages.map((m) => m.role).lastIndexOf('user');
+  if (i < 0) return;
+  const u = s.messages[i];
+  if (u.voice || u.imageUri) {
+    toast('Only typed messages can be retried');
+    return;
+  }
+  appStore.set({ messages: s.messages.slice(0, i) });
+  persistChatSoon();
+  await sendMessage(u.text);
+}
+
 export function stopGenerating() {
   genAbort?.abort();
   genAbort = null;
@@ -300,7 +336,7 @@ export async function sendMessage(rawText: string) {
     updateMsg(replyId, { text: buf, reasoning: reasoning || undefined });
   };
   const schedule = () => {
-    if (!flushTimer) flushTimer = setTimeout(flush, 60);
+    if (!flushTimer) flushTimer = setTimeout(flush, 40);
   };
 
   try {
@@ -323,6 +359,7 @@ export async function sendMessage(rawText: string) {
     });
     if (flushTimer) clearTimeout(flushTimer);
     updateMsg(replyId, { text: buf.trim() || '(no answer)', reasoning: reasoning || undefined, streaming: false });
+    tap('light');
     log.info('chat', `answered in ${Date.now() - t0} ms (first token ${firstAt ? firstAt - t0 : '-'} ms), finish=${res.finish}, ${buf.length} chars`);
   } catch (e: any) {
     if (flushTimer) clearTimeout(flushTimer);

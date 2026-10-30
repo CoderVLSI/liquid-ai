@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Press as Pressable } from './Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from './theme';
 

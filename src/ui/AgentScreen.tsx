@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Press as Pressable } from './Press';
+import { FadeIn } from './FadeIn';
 import { useAgents, useApp, useDownloads } from './hooks';
 import { colors, shared } from './theme';
 import { Icon } from './Icon';
@@ -107,7 +109,7 @@ export function AgentScreen() {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.hero}>
-        <Mascot mood={mood} size={104} />
+        <Mascot mood={mood} size={top.length ? 76 : 104} />
         <View style={styles.bubble}>
           <Text style={styles.bubbleText}>{line}</Text>
         </View>
@@ -134,21 +136,23 @@ export function AgentScreen() {
           anyModel ? (
             <View>
               <Text style={styles.ideasTitle}>Try asking Pocket to…</Text>
-              {IDEAS.map((i) => (
-                <Pressable key={i} style={styles.idea} onPress={() => enqueue({ agentId: MAIN_AGENT, goal: i })}>
-                  <Text style={styles.ideaText}>{i}</Text>
-                </Pressable>
+              {IDEAS.map((i, n) => (
+                <FadeIn key={i} delay={80 + n * 70}>
+                  <Pressable style={styles.idea} onPress={() => enqueue({ agentId: MAIN_AGENT, goal: i })} pressScale={0.97}>
+                    <Text style={styles.ideaText}>{i}</Text>
+                  </Pressable>
+                </FadeIn>
               ))}
             </View>
           ) : null
         }
         renderItem={({ item }) => (
-          <View style={{ marginBottom: 6 }}>
+          <FadeIn style={{ marginBottom: 6 }} y={14}>
             <View style={styles.mine}>
               <Text style={styles.mineText} selectable>{item.goal}</Text>
             </View>
             <TaskCard task={item} compact />
-          </View>
+          </FadeIn>
         )}
       />
       <Composer />

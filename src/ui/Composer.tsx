@@ -1,9 +1,54 @@
-import React, { useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Press } from './Press';
+import { FadeIn } from './FadeIn';
 import { useApp } from './hooks';
 import { colors } from './theme';
 import { Icon } from './Icon';
-import { clearAttachment, pickImage, sendMessage, stopGenerating, toggleVoice } from '../app/controller';
+import { ms } from './motion';
+import { clearAttachment, pickImage, sendMessage, stopGenerating, toggleVoice, warmUp } from '../app/controller';
+
+type Kind = 'mic' | 'send' | 'stop';
+const INDEX: Record<Kind, number> = { mic: 0, send: 1, stop: 2 };
+const LABEL: Record<Kind, string> = { mic: 'Start live voice', send: 'Send', stop: 'Stop' };
+
+/**
+ * One round button that turns into whatever is useful right now: mic (nothing typed), send (something typed)
+ * or stop (a reply is being written). The three faces cross-fade and the button pops when it changes.
+ */
+function ActionButton({ kind, onPress }: { kind: Kind; onPress: () => void }) {
+  const m = useRef(new Animated.Value(INDEX[kind])).current;
+  const pop = useRef(new Animated.Value(1)).current;
+  const first = useRef(true);
+
+  useEffect(() => {
+    Animated.timing(m, { toValue: INDEX[kind], duration: ms(150), useNativeDriver: true }).start();
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    pop.setValue(0.78);
+    Animated.spring(pop, { toValue: 1, speed: 28, bounciness: 12, useNativeDriver: true }).start();
+  }, [kind, m, pop]);
+
+  const face = (i: number) => ({ opacity: m.interpolate({ inputRange: [i - 1, i, i + 1], outputRange: [0, 1, 0], extrapolate: 'clamp' as const }) });
+
+  return (
+    <Animated.View style={{ transform: [{ scale: pop }] }}>
+      <Press style={styles.action} onPress={onPress} haptic={kind === 'send' ? 'medium' : 'light'} accessibilityLabel={LABEL[kind]}>
+        <Animated.View style={[styles.face, { backgroundColor: colors.accentDim }, face(0)]}>
+          <Icon name="audio" size={24} />
+        </Animated.View>
+        <Animated.View style={[styles.face, { backgroundColor: colors.accent }, face(1)]}>
+          <Icon name="send" size={22} color={colors.onAccent} />
+        </Animated.View>
+        <Animated.View style={[styles.face, { backgroundColor: colors.danger }, face(2)]}>
+          <View style={styles.stopSquare} />
+        </Animated.View>
+      </Press>
+    </Animated.View>
+  );
+}
 
 export function Composer() {
   const [text, setText] = useState('');
@@ -11,10 +56,11 @@ export function Composer() {
   const generating = useApp((s) => s.generating);
 
   const canSend = text.trim().length > 0 || attachment != null;
+  const kind: Kind = generating ? 'stop' : canSend ? 'send' : 'mic';
 
   const send = () => {
     const t = text;
-    setText('');
+    setText(''); // clear first: the box empties on touch, not when the model answers
     void sendMessage(t);
   };
 
@@ -28,44 +74,42 @@ export function Composer() {
   return (
     <View style={styles.wrap}>
       {attachment ? (
-        <View style={styles.preview}>
-          <Image source={{ uri: attachment.uri }} style={styles.thumb} />
-          <Text style={styles.previewText}>Image attached — ask about it</Text>
-          <Pressable onPress={clearAttachment} hitSlop={10} accessibilityLabel="Remove image">
-            <Text style={styles.remove}>✕</Text>
-          </Pressable>
-        </View>
+        <FadeIn y={6} duration={150}>
+          <View style={styles.preview}>
+            <Image source={{ uri: attachment.uri }} style={styles.thumb} />
+            <Text style={styles.previewText}>Image attached — ask about it</Text>
+            <Press onPress={clearAttachment} hitSlop={10} accessibilityLabel="Remove image" haptic={false}>
+              <Text style={styles.remove}>✕</Text>
+            </Press>
+          </View>
+        </FadeIn>
       ) : null}
 
       <View style={styles.row}>
-        <Pressable style={styles.iconBtn} onPress={attach} accessibilityLabel="Attach image" disabled={generating}>
+        <Press style={styles.iconBtn} onPress={attach} accessibilityLabel="Attach image" disabled={generating}>
           <Icon name="gallery" size={24} />
-        </Pressable>
+        </Press>
 
+        {/* never switched to read-only while a reply streams: that made Android hide the keyboard on every send */}
         <TextInput
           style={styles.input}
           value={text}
           onChangeText={setText}
+          onFocus={warmUp}
           placeholder="Message"
           placeholderTextColor={colors.muted}
           multiline
           maxLength={8000}
-          editable={!generating}
         />
 
-        {generating ? (
-          <Pressable style={[styles.action, styles.stop]} onPress={stopGenerating} accessibilityLabel="Stop">
-            <Text style={styles.actionText}>■</Text>
-          </Pressable>
-        ) : canSend ? (
-          <Pressable style={[styles.action, styles.send]} onPress={send} accessibilityLabel="Send">
-            <Icon name="send" size={22} color={colors.onAccent} />
-          </Pressable>
-        ) : (
-          <Pressable style={[styles.action, styles.mic]} onPress={() => void toggleVoice()} accessibilityLabel="Start live voice">
-            <Icon name="audio" size={24} />
-          </Pressable>
-        )}
+        <ActionButton
+          kind={kind}
+          onPress={() => {
+            if (kind === 'stop') stopGenerating();
+            else if (kind === 'send') send();
+            else void toggleVoice();
+          }}
+        />
       </View>
     </View>
   );
@@ -87,11 +131,9 @@ const styles = StyleSheet.create({
     paddingTop: 11,
     paddingBottom: 11,
   },
-  action: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  actionText: { color: colors.text, fontSize: 20 },
-  send: { backgroundColor: colors.accent },
-  mic: { backgroundColor: colors.accentDim },
-  stop: { backgroundColor: colors.danger },
+  action: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
+  face: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  stopSquare: { width: 14, height: 14, borderRadius: 3, backgroundColor: colors.text },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, backgroundColor: colors.surface, borderRadius: 14, padding: 8 },
   thumb: { width: 44, height: 44, borderRadius: 8 },
   previewText: { flex: 1, color: colors.muted, fontSize: 13 },

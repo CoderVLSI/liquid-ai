@@ -46,6 +46,8 @@ Why a separate server process instead of an in-process library? `llama.rn` (the 
 
 The server does no turn detection, so the app does it (`src/voice/vad.ts`): an energy VAD with an adaptive noise floor. Audio is only sent once speech is confirmed (a 400 ms pre-roll avoids clipping the first word), silence ends the turn and triggers `response.create`. Speaking over the assistant **barges in**: `response.cancel`, the speaker buffer is flushed, and late audio from the cancelled response is dropped. While the assistant talks, a louder + longer speech threshold is required so it does not interrupt itself. Android "call" audio mode + the platform echo canceller are enabled; headphones are still best.
 
+**Who speaks.** Generating speech on a phone CPU can be slower than real time, and then no buffer can stop it breaking up. So by default (**Phone voice**, Settings → Live voice) the model only *listens and writes text* (`output_modalities: ["text"]`, fast) and Android's own speech engine says each sentence the moment it is complete (`src/voice/speech.ts` cuts the stream into sentences and strips markdown/emoji; `PhoneVoice.kt` queues them). It costs no CPU, cannot stutter and starts after the first sentence. **LFM3 voice** (the model's own audio) is still there for a more natural sound, with the jitter buffer and auto-tuning from before; if the phone has no speech engine the app falls back to it by itself. The log line `reply (phone voice): ...` shows the timings.
+
 Voice needs the **Omni** or **Audio** model. Images need **Omni** or **VL**. The app switches to a downloaded model that has the capability you ask for.
 
 ### Models (downloaded from Hugging Face on demand)
@@ -72,6 +74,10 @@ Flip the toggle at the top from **Chat** to **Agent**. You talk to one agent, **
 - **See what it did:** every task has a step-by-step timeline.
 
 It uses the loaded LFM3 model's tool calling (the 1.7B text model is the natural choice). It does not control other apps (that would need an Android Accessibility Service) and it is a small on-device model: short tasks work well, long multi-step research is slow and hit-and-miss. Agent tasks pause while a live voice conversation or chat reply runs.
+
+## Feel
+
+Every button squeezes on touch-down and springs back with a small haptic tick (Settings → Haptic feedback); the Chat | Agent switch is a sliding pill; the send button morphs mic → send → stop; messages fade in; the typing dots show before the first word; the list follows a streaming reply without animating every word and shows a "scroll to latest" button when you scroll up; replies have Copy / Try again; the model starts loading as soon as you tap the message box; the keyboard stays open while a reply streams. All animation durations drop to 0 when Android's "remove animations" is on.
 
 ## Debugging crashes
 

@@ -36,6 +36,8 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
       model: 'local',
       messages: o.messages,
       stream: true,
+      // reuse the already-processed start of the conversation: only the new message is read each turn
+      cache_prompt: true,
       temperature: 0,
       max_tokens: o.maxTokens ?? 1024,
     }),

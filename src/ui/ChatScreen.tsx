@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Easing, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Press as Pressable } from './Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp, useDownloads, useServer } from './hooks';
 import { colors, shared } from './theme';
@@ -8,6 +9,8 @@ import { MessageBubble } from './MessageBubble';
 import { Composer } from './Composer';
 import { LivePanel } from './LivePanel';
 import { ModeToggle } from './ModeToggle';
+import { FadeIn } from './FadeIn';
+import { ms } from './motion';
 import { AgentScreen } from './AgentScreen';
 import { dismissCrashes, newChat, openSheet, restartServer } from '../app/controller';
 import { getModel } from '../models/catalog';
@@ -107,6 +110,25 @@ function Empty() {
   );
 }
 
+/** Slides up and fades; keeps the last text while fading out so it does not blink to empty. */
+function Toast({ text }: { text: string | null }) {
+  const v = useRef(new Animated.Value(0)).current;
+  const last = useRef('');
+  if (text) last.current = text;
+  useEffect(() => {
+    Animated.timing(v, { toValue: text ? 1 : 0, duration: ms(text ? 180 : 240), easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [text, v]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      importantForAccessibility={text ? 'auto' : 'no-hide-descendants'}
+      style={[styles.toast, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}
+    >
+      <Text style={styles.toastText}>{last.current}</Text>
+    </Animated.View>
+  );
+}
+
 export function ChatScreen() {
   const insets = useSafeAreaInsets();
   const messages = useApp((s) => s.messages);
@@ -114,12 +136,27 @@ export function ChatScreen() {
   const toast = useApp((s) => s.toast);
   const mode = useApp((s) => s.mode);
   const list = useRef<FlatList<ChatMsg>>(null);
+  const atBottom = useRef(true);
+  const [showJump, setShowJump] = useState(false);
 
-  const last = messages[messages.length - 1];
+  // a new message (yours or the reply's first word) scrolls down with a short animation...
   useEffect(() => {
-    const t = setTimeout(() => list.current?.scrollToEnd({ animated: true }), 50);
+    atBottom.current = true;
+    const t = setTimeout(() => list.current?.scrollToEnd({ animated: true }), 30);
     return () => clearTimeout(t);
-  }, [messages.length, last?.text.length]);
+  }, [messages.length]);
+
+  // ...while a streaming reply just keeps the end in view without animating every word (that was janky)
+  const follow = () => {
+    if (atBottom.current) list.current?.scrollToEnd({ animated: false });
+  };
+  const onScroll = (e: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const gap = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    atBottom.current = gap < 90;
+    const far = gap > 260;
+    setShowJump((v) => (v === far ? v : far));
+  };
 
   return (
     <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -135,19 +172,27 @@ export function ChatScreen() {
             style={{ flex: 1 }}
             data={messages}
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <MessageBubble msg={item} />}
+            renderItem={({ item, index }) => <MessageBubble msg={item} animateIn={index >= messages.length - 2} isLast={index === messages.length - 1} />}
+            onContentSizeChange={follow}
+            onScroll={onScroll}
+            scrollEventThrottle={64}
+            windowSize={9}
+            initialNumToRender={12}
             ListEmptyComponent={<Empty />}
             contentContainerStyle={messages.length ? { paddingVertical: 8 } : { flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
           />
+          {showJump && !voiceActive ? (
+            <FadeIn y={8} duration={150} style={styles.jumpWrap}>
+              <Pressable style={styles.jump} onPress={() => list.current?.scrollToEnd({ animated: true })} accessibilityLabel="Scroll to latest">
+                <Text style={styles.jumpText}>↓</Text>
+              </Pressable>
+            </FadeIn>
+          ) : null}
           {voiceActive ? <LivePanel /> : <Composer />}
         </>
       )}
-      {toast ? (
-        <View style={styles.toast} pointerEvents="none">
-          <Text style={styles.toastText}>{toast}</Text>
-        </View>
-      ) : null}
+      <Toast text={toast} />
     </KeyboardAvoidingView>
   );
 }
@@ -171,6 +216,9 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyTitle: { color: colors.text, fontSize: 26, fontWeight: '700' },
   emptyText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 10 },
+  jumpWrap: { position: 'absolute', right: 16, bottom: 74 },
+  jump: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceHi, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  jumpText: { color: colors.accent, fontSize: 20, fontWeight: '700' },
   toast: { position: 'absolute', left: 24, right: 24, bottom: 130, backgroundColor: colors.surfaceHi, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12 },
   toastText: { color: colors.text, fontSize: 14, textAlign: 'center' },
 });

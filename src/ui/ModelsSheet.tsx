@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Press as Pressable } from './Press';
 import { Sheet } from './Sheet';
 import { useApp, useDownloads, useServer } from './hooks';
 import { colors, shared } from './theme';

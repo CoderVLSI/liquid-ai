@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Press as Pressable } from './Press';
 import { useApp } from './hooks';
 import { colors } from './theme';
 import { Icon } from './Icon';

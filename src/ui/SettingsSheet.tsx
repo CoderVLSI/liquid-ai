@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Press as Pressable } from './Press';
 import { Sheet } from './Sheet';
 import { useApp } from './hooks';
 import { colors, shared } from './theme';
