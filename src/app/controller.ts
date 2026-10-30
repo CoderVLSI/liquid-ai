@@ -17,6 +17,7 @@ import { streamChat } from '../net/ChatClient';
 import { RealtimeClient } from '../net/RealtimeClient';
 import * as Clipboard from 'expo-clipboard';
 import { withPersona } from '../state/profile';
+import { mcp } from '../mcp/manager';
 import { tap } from '../lib/haptics';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
@@ -89,6 +90,8 @@ export async function boot() {
   RNAppState.addEventListener('change', onAppState);
   void startConnections();
   void startAgents();
+  mcp.init();
+  void mcp.refreshAll();
 
   // Warm the model so the first message is fast.
   if (settings.activeModel) {

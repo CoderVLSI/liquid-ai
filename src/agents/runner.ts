@@ -10,6 +10,7 @@ import { deserialize, serialize } from './persist';
 import { runTask, resolvePending } from './engine';
 import { buildTools } from './tools';
 import { personaLine } from '../state/profile';
+import { mcp } from '../mcp/manager';
 import { ServerLlm } from './llm';
 import { connectionTools } from '../connections/store';
 import type { Agent, AgentTask, Note, Reminder, Todo, Tool } from './types';
@@ -322,6 +323,7 @@ function toolsFor(agent: Agent, allowWeb: boolean): Tool[] {
       todos: todosApi,
     }),
     ...connectionTools(() => appStore.get().settings.timezone),
+    ...mcp.allTools(),
   ].filter((t) => !t.web || allowWeb);
 }
 
@@ -373,6 +375,7 @@ async function execute(id: string, ctl: AbortController) {
 
   const agents = agentStore.get().agents;
   const agent = agents.find((a) => a.id === task.agentId) ?? agents[0];
+  await mcp.ensureLoaded();
   const tools = toolsFor(agent, settings.agentWeb);
 
   try {
@@ -383,6 +386,7 @@ async function execute(id: string, ctl: AbortController) {
       team: agents,
       now: () => new Date(),
       zone: settings.timezone,
+      extraSkills: mcp.skills(),
       persona: personaLine(settings),
       signal: ctl.signal,
       maxSteps: settings.agentMaxSteps,
