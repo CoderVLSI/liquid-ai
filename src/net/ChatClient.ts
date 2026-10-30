@@ -38,7 +38,10 @@ export async function streamChat(o: StreamOptions): Promise<StreamResult> {
       stream: true,
       // reuse the already-processed start of the conversation: only the new message is read each turn
       cache_prompt: true,
-      temperature: 0,
+      // greedy decoding (temperature 0) makes a small model loop on stock phrases like "How can I help you today?"
+      temperature: 0.3,
+      min_p: 0.15,
+      repeat_penalty: 1.05,
       max_tokens: o.maxTokens ?? 1024,
     }),
     signal: o.signal,

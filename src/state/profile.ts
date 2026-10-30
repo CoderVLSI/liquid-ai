@@ -26,6 +26,7 @@ export function personaLine(s: Pick<Settings, 'agentName' | 'userName' | 'goals'
   if (topics.length) parts.push(`The user mainly wants help with: ${topics.join('; ')}.`);
   const tone = TONES.find((t) => t.id === s.tone);
   if (tone) parts.push(tone.line);
+  parts.push('Reply in the language the user writes in. If they ask for a language you do not speak well, say so honestly and answer in English instead of pretending.');
   return parts.join(' ');
 }
 

@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, mergeSettings } from './settings.ts';
 const base = { agentName: 'Pocket', userName: '', goals: '', interests: [] as string[], tone: 'friendly' as const };
 
 test('persona line names the assistant and the user, and skips empty fields', () => {
-  assert.equal(personaLine(base), 'Your name is Pocket. Be warm and friendly, but keep answers short.');
+  assert.match(personaLine(base), /^Your name is Pocket\. Be warm and friendly, but keep answers short\. Reply in the language the user writes in\./);
   const p = personaLine({ ...base, agentName: 'Bloop', userName: 'Priya', interests: ['Studying and homework'], goals: 'keep track of assignments', tone: 'concise' });
   assert.match(p, /Your name is Bloop\./);
   assert.match(p, /The user's name is Priya/);
@@ -15,7 +15,7 @@ test('persona line names the assistant and the user, and skips empty fields', ()
 });
 
 test('withPersona appends to a prompt', () => {
-  assert.equal(withPersona('You help.', { ...base, userName: 'Sam' }), "You help. Your name is Pocket. The user's name is Sam; use it now and then, not in every sentence. Be warm and friendly, but keep answers short.");
+  assert.match(withPersona('You help.', { ...base, userName: 'Sam' }), /^You help\. Your name is Pocket\. The user's name is Sam; use it now and then, not in every sentence\. Be warm and friendly, but keep answers short\. Reply in the language/);
 });
 
 test('profile fields survive a settings round trip and old saves still load', () => {
