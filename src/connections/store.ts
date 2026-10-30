@@ -171,10 +171,10 @@ export function disconnectGoogle() {
 
 // ---- tools for the agents ---------------------------------------------------------------------
 
-export function connectionTools(): Tool[] {
+export function connectionTools(zone: () => string = () => 'auto'): Tool[] {
   const s = connStore.get();
   const out: Tool[] = [];
   if (s.slack) out.push(...slackTools(new SlackClient(s.slack.token, httpFetch)));
-  if (s.google) out.push(...googleTools(new GoogleClient(googleToken, httpFetch), s.google.scopes));
+  if (s.google) out.push(...googleTools(new GoogleClient(googleToken, httpFetch), s.google.scopes, () => new Date(), zone));
   return out;
 }

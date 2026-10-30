@@ -9,6 +9,7 @@ import { agentStore } from './store';
 import { deserialize, serialize } from './persist';
 import { runTask, resolvePending } from './engine';
 import { buildTools } from './tools';
+import { personaLine } from '../state/profile';
 import { ServerLlm } from './llm';
 import { connectionTools } from '../connections/store';
 import type { Agent, AgentTask, Note, Reminder, Todo, Tool } from './types';
@@ -228,6 +229,14 @@ export function clearFinished() {
   setTasks((ts) => ts.filter((t) => ACTIVE.has(t.status) || t.status === 'waiting'));
 }
 
+/** The user renamed their assistant in setup: the main agent carries that name everywhere. */
+export function renameMainAgent(name: string) {
+  const n = name.trim();
+  if (!n) return;
+  agentStore.set((st) => ({ agents: st.agents.map((a) => (a.id === 'atlas' ? { ...a, name: n } : a)) }));
+  persistSoon();
+}
+
 export function addAgent(a: { name: string; emoji: string; role: string }): Agent | null {
   const name = a.name.trim();
   if (!name || agentStore.get().agents.some((x) => x.name.toLowerCase() === name.toLowerCase())) return null;
@@ -300,6 +309,7 @@ function toolsFor(agent: Agent, allowWeb: boolean): Tool[] {
   return [
     ...buildTools({
       now: () => new Date(),
+      zone: () => appStore.get().settings.timezone,
       fetchText,
       notes: notesApi,
       scheduleReminder: (atMs, text) => {
@@ -311,7 +321,7 @@ function toolsFor(agent: Agent, allowWeb: boolean): Tool[] {
       reminders: remindersApi,
       todos: todosApi,
     }),
-    ...connectionTools(),
+    ...connectionTools(() => appStore.get().settings.timezone),
   ].filter((t) => !t.web || allowWeb);
 }
 
@@ -372,6 +382,8 @@ async function execute(id: string, ctl: AbortController) {
       agent,
       team: agents,
       now: () => new Date(),
+      zone: settings.timezone,
+      persona: personaLine(settings),
       signal: ctl.signal,
       maxSteps: settings.agentMaxSteps,
       requireApproval: settings.confirmWrites,

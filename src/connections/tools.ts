@@ -1,3 +1,4 @@
+import { fromWall, resolveZone } from '../lib/tz.ts';
 import type { Tool } from '../agents/types.ts';
 import type { GoogleClient, GoogleScope } from './google.ts';
 import type { SlackClient } from './slack.ts';
@@ -45,7 +46,15 @@ export function slackTools(slack: SlackClient): Tool[] {
   ];
 }
 
-export function googleTools(google: GoogleClient, scopes: GoogleScope[], now: () => Date = () => new Date()): Tool[] {
+/** "2026-10-30T15:00" is a time on the user's clock; the calendar API wants an exact instant. */
+export function wallToIso(text: string, zone: string): string {
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?(.*)$/);
+  if (!m || /^(z|[+-]\d{2}:?\d{2})/i.test(m[6].trim())) return text; // unparsable, or it carries its own offset
+  const wall = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 9, m[5] ? +m[5] : 0, 0, 0);
+  return fromWall(wall, resolveZone(zone)).toISOString();
+}
+
+export function googleTools(google: GoogleClient, scopes: GoogleScope[], now: () => Date = () => new Date(), zone: () => string = () => 'auto'): Tool[] {
   const out: Tool[] = [];
   if (scopes.includes('calendar')) {
     out.push(
@@ -64,7 +73,7 @@ export function googleTools(google: GoogleClient, scopes: GoogleScope[], now: ()
           required: ['title', 'start'],
         },
         approval: (a) => `Create calendar event "${str(a.title)}" starting ${str(a.start)}${a.end ? ` until ${str(a.end)}` : ''}.`,
-        run: (a) => wrap(() => google.calendarCreate({ title: str(a.title), start: str(a.start), end: str(a.end) || undefined, description: str(a.description) || undefined }))(),
+        run: (a) => wrap(() => google.calendarCreate({ title: str(a.title), start: wallToIso(str(a.start), zone()), end: str(a.end) ? wallToIso(str(a.end), zone()) : undefined, description: str(a.description) || undefined }))(),
       },
     );
   }

@@ -2,6 +2,7 @@ import type { Note, Reminder, Todo, Tool } from './types.ts';
 import { evaluate, formatNumber } from './calc.ts';
 import { formatHits, htmlToText, parseDuckDuckGo } from './html.ts';
 import { describeIn, parseWhen, toLocalIso } from './when.ts';
+import { fromWall, resolveZone, toWall, zoneLabel } from '../lib/tz.ts';
 import { convertUnits } from './units.ts';
 
 export interface FetchResult {
@@ -12,6 +13,8 @@ export interface FetchResult {
 
 export interface ToolDeps {
   now: () => Date;
+  /** the user's chosen time zone ('auto' or an IANA name); times they say and see are in this zone */
+  zone?: () => string;
   /** GET/POST with a timeout and a size cap, supplied by the host */
   fetchText: (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<FetchResult>;
   notes: { add(text: string): Note; list(): Note[]; remove(id: string): boolean };
@@ -39,20 +42,26 @@ const num = (v: unknown): number | null => {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim());
 
-export function formatDateTime(d: Date): string {
+export function formatDateTime(d: Date, label = 'local time'): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${days[d.getDay()]} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} (local time)`;
+  return `${days[d.getDay()]} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())} (${label})`;
 }
 
 export function buildTools(deps: ToolDeps): Tool[] {
+  const zoneId = () => deps.zone?.() ?? 'auto';
+  const zone = () => resolveZone(zoneId());
+  /** the clock on the user's wall right now (a Date whose local fields are their time) */
+  const wallNow = () => toWall(deps.now(), zone());
+  /** an instant shown on the user's clock */
+  const show = (instant: Date) => formatDateTime(toWall(instant, zone()), zoneLabel(zoneId()));
   return [
     {
       name: 'get_time',
       description: 'Get the current local date and time.',
       parameters: { type: 'object', properties: {} },
       async run() {
-        return formatDateTime(deps.now());
+        return show(deps.now());
       },
     },
     {
@@ -129,17 +138,19 @@ export function buildTools(deps: ToolDeps): Tool[] {
         const text = str(args.text);
         if (!text) return 'Error: say what to remind about (the "text" argument).';
         const now = deps.now();
-        let base: Date | null = null;
+        let base: Date | null = null; // an instant
         const when = str(args.when) || str(args.at);
-        if (when) base = parseWhen(when, now);
-        else if (num(args.minutes) != null && num(args.minutes)! > 0) base = new Date(now.getTime() + num(args.minutes)! * 60_000);
+        if (when) {
+          const wall = parseWhen(when, wallNow()); // the words are read on the user's clock
+          base = wall ? fromWall(wall, zone()) : null;
+        } else if (num(args.minutes) != null && num(args.minutes)! > 0) base = new Date(now.getTime() + num(args.minutes)! * 60_000);
         if (!base) {
           return when
             ? `Error: I could not understand the time "${when}". Call set_reminder again with "when" like "in 20 minutes", "today 11:30" or "tomorrow 9am", or ask the user.`
             : 'Error: "when" is missing. Call ask_user to ask when to remind, or call set_reminder again with "when".';
         }
         if (base.getTime() <= now.getTime() + 5_000) {
-          return `Error: ${formatDateTime(base)} has already passed (it is ${formatDateTime(now)}). Use a later time or ask the user.`;
+          return `Error: ${show(base)} has already passed (it is ${show(now)}). Use a later time or ask the user.`;
         }
         let at = base.getTime();
         const before = num(args.minutes_before);
@@ -148,8 +159,8 @@ export function buildTools(deps: ToolDeps): Tool[] {
           if (at <= now.getTime() + 5_000) at = now.getTime() + 60_000; // deadline is close: remind right away
         }
         await deps.scheduleReminder(at, text);
-        const extra = at !== base.getTime() ? ` (deadline ${formatDateTime(base)})` : '';
-        return `Reminder set for ${formatDateTime(new Date(at))}, in ${describeIn(at - now.getTime())}: ${text}${extra}`;
+        const extra = at !== base.getTime() ? ` (deadline ${show(base)})` : '';
+        return `Reminder set for ${show(new Date(at))}, in ${describeIn(at - now.getTime())}: ${text}${extra}`;
       },
     },
     {
@@ -160,7 +171,7 @@ export function buildTools(deps: ToolDeps): Tool[] {
         const now = deps.now().getTime();
         const up = deps.reminders.list().filter((r) => r.at > now).sort((a, b) => a.at - b.at);
         if (!up.length) return 'No upcoming reminders.';
-        return up.map((r) => `[${r.id}] ${formatDateTime(new Date(r.at))} - ${r.text}`).join('\n');
+        return up.map((r) => `[${r.id}] ${show(new Date(r.at))} - ${r.text}`).join('\n');
       },
     },
     {
@@ -180,10 +191,11 @@ export function buildTools(deps: ToolDeps): Tool[] {
       parameters: { type: 'object', properties: { when: { type: 'string', description: 'the time in plain words' } }, required: ['when'] },
       async run(args) {
         const w = str(args.when);
-        const d = parseWhen(w, deps.now());
-        if (!d) return `Error: I could not understand "${w}". Try "tomorrow 3pm" or "in 2 hours".`;
+        const wall = parseWhen(w, wallNow());
+        const d = wall ? fromWall(wall, zone()) : null;
+        if (!d || !wall) return `Error: I could not understand "${w}". Try "tomorrow 3pm" or "in 2 hours".`;
         const diff = d.getTime() - deps.now().getTime();
-        return `${formatDateTime(d)}  |  ISO ${toLocalIso(d)}  |  ${diff >= 0 ? `in ${describeIn(diff)}` : `${describeIn(-diff)} ago`}`;
+        return `${show(d)}  |  ISO ${toLocalIso(wall)}  |  ${diff >= 0 ? `in ${describeIn(diff)}` : `${describeIn(-diff)} ago`}`;
       },
     },
     {

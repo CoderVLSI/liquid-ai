@@ -217,8 +217,8 @@ export const GENERAL: Skill = {
 const MAX_SKILLS = 2;
 
 /** Picks the playbook(s) for a task. A skill whose connection is missing stays in, but tells the user to connect it. */
-export function pickSkills(goal: string, toolNames: string[]): Skill[] {
-  const hits = SKILLS.filter((s) => s.match.test(goal));
+export function pickSkills(goal: string, toolNames: string[], extra: Skill[] = []): Skill[] {
+  const hits = [...extra.filter((s) => s.match.test(goal)), ...SKILLS.filter((s) => s.match.test(goal))];
   const chosen = (hits.find((s) => s.exclusive) ? [hits.find((s) => s.exclusive)!] : hits).slice(0, MAX_SKILLS);
   if (!chosen.length) return [GENERAL];
   return chosen.map((s) => {

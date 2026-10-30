@@ -16,6 +16,7 @@ import { server } from '../server/ServerManager';
 import { streamChat } from '../net/ChatClient';
 import { RealtimeClient } from '../net/RealtimeClient';
 import * as Clipboard from 'expo-clipboard';
+import { withPersona } from '../state/profile';
 import { tap } from '../lib/haptics';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
@@ -319,7 +320,7 @@ export async function sendMessage(rawText: string) {
     error: m.error,
     interrupted: m.interrupted,
   }));
-  const req = buildRequest(s.settings.systemPrompt, history, { text, imageDataUri: attachment?.dataUri });
+  const req = buildRequest(withPersona(s.settings.systemPrompt, s.settings), history, { text, imageDataUri: attachment?.dataUri });
 
   addMsg({ role: 'user', text, imageUri: attachment?.uri });
   const replyId = addMsg({ role: 'assistant', text: '', streaming: true });
@@ -430,7 +431,7 @@ export async function startVoice() {
   try {
     await server.ensure(id, settings);
     const client = new RealtimeClient(`ws://127.0.0.1:${settings.port}/v1/realtime`);
-    const session = new VoiceSession(client, audioPort, settings, {
+    const session = new VoiceSession(client, audioPort, { ...settings, voicePrompt: withPersona(settings.voicePrompt, settings) }, {
       onState: (state) => appStore.set((s) => ({ voice: { ...s.voice, state } })),
       onLevel: (rms) => {
         const now = Date.now();

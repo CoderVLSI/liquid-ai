@@ -38,3 +38,10 @@ test('only the most recent tasks are kept', () => {
   assert.equal(back.tasks.length, 60);
   assert.equal(back.tasks.at(-1)!.id, 't79');
 });
+
+test('the main agent keeps the name the user gave it', () => {
+  const renamed = DEFAULT_AGENTS.map((a) => (a.id === 'atlas' ? { ...a, name: 'Bloop' } : a));
+  const back = deserialize(JSON.stringify({ agents: renamed, tasks: [], notes: [] }));
+  assert.equal(back.agents.find((a) => a.id === 'atlas')!.name, 'Bloop');
+  assert.equal(back.agents.find((a) => a.id === 'scout')!.name, 'Scout');
+});

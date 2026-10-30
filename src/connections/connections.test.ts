@@ -223,3 +223,11 @@ test('calendar tool passes arguments through and coerces numbers', async () => {
   assert.match(await tools[0].run({ days: '3' }), /No events in the next 3 day/);
   assert.match(calls[0].url, /timeMax=2026-11-01/);
 });
+
+test('calendar times are read on the user\'s clock and sent as exact instants', async () => {
+  const { wallToIso } = await import('./tools.ts');
+  assert.equal(wallToIso('2026-10-30T15:00', 'Asia/Kolkata'), '2026-10-30T09:30:00.000Z');
+  assert.equal(wallToIso('2026-10-30T15:00', 'UTC'), '2026-10-30T15:00:00.000Z');
+  assert.equal(wallToIso('2026-10-30T15:00:00Z', 'Asia/Kolkata'), '2026-10-30T15:00:00Z'); // already exact
+  assert.equal(wallToIso('next friday', 'UTC'), 'next friday'); // not ours to parse
+});

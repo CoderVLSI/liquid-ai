@@ -32,6 +32,7 @@ function useMood(): { mood: MascotMood; line: string } {
 }
 
 function Composer() {
+  const name = useApp((s) => s.settings.agentName) || 'Pocket';
   const [goal, setGoal] = useState('');
   const [showWhen, setShowWhen] = useState(false);
   const [delay, setDelay] = useState(0);
@@ -73,7 +74,7 @@ function Composer() {
           style={styles.input}
           value={goal}
           onChangeText={setGoal}
-          placeholder="Give Pocket a task…"
+          placeholder={`Give ${name} a task…`}
           placeholderTextColor={colors.muted}
           multiline
           maxLength={4000}
@@ -105,6 +106,7 @@ export function AgentScreen() {
   }, [top.length]);
 
   const sub = useApp((s) => s.settings.agentWeb);
+  const name = useApp((s) => s.settings.agentName) || 'Pocket';
 
   return (
     <View style={{ flex: 1 }}>
@@ -135,7 +137,7 @@ export function AgentScreen() {
         ListEmptyComponent={
           anyModel ? (
             <View>
-              <Text style={styles.ideasTitle}>Try asking Pocket to…</Text>
+              <Text style={styles.ideasTitle}>Try asking {name} to…</Text>
               {IDEAS.map((i, n) => (
                 <FadeIn key={i} delay={80 + n * 70}>
                   <Pressable style={styles.idea} onPress={() => enqueue({ agentId: MAIN_AGENT, goal: i })} pressScale={0.97}>

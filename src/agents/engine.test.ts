@@ -410,3 +410,24 @@ test('skills route requests, and missing connections say so', async () => {
   // an exclusive skill is not mixed with others
   assert.equal(pickSkills('remind me to search the weather', names).length, 1);
 });
+
+test('times are read on the clock of the user\'s chosen zone, whatever the phone says', async () => {
+  const instant = new Date(Date.UTC(2026, 9, 29, 9, 0)); // 14:30 in Kolkata
+  const { run, reminders } = realTools({ now: () => instant, zone: () => 'Asia/Kolkata' });
+  assert.match(await run('get_time', {}), /Thursday 2026-10-29 14:30 \(IST\)/);
+  assert.match(await run('set_reminder', { text: 'Submit', when: 'tomorrow 9am' }), /Friday 2026-10-30 09:00 \(IST\)/);
+  assert.equal(new Date(reminders[0].at).toISOString(), '2026-10-30T03:30:00.000Z');
+  // "5pm" is 5 pm in India, which is 11:30 UTC today
+  await run('set_reminder', { text: 'x', when: '5pm' });
+  assert.equal(new Date(reminders[1].at).toISOString(), '2026-10-29T11:30:00.000Z');
+  assert.match(await run('parse_time', { when: 'tomorrow 3pm' }), /ISO 2026-10-30T15:00/);
+  assert.match(await run('list_reminders', {}), /2026-10-30 09:00 \(IST\)/);
+});
+
+test('the prompt shows the time in the user\'s zone and the persona line', async () => {
+  const { deps, llm } = setup([say('ok')], { zone: 'Asia/Kolkata', persona: 'Your name is Bloop.' });
+  deps.now = () => new Date(Date.UTC(2026, 9, 29, 9, 0));
+  await runTask(newTask(), deps);
+  assert.match(llm.requests[0].system, /Current time: Thursday 2026-10-29 14:30 \(IST\)/);
+  assert.match(llm.requests[0].system, /Your name is Bloop\./);
+});

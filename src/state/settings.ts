@@ -1,6 +1,27 @@
 import type { ModelId } from '../models/catalog.ts';
+import type { McpServerConfig } from '../mcp/types.ts';
+
+export type Tone = 'friendly' | 'concise' | 'formal';
 
 export interface Settings {
+  // ---- who the user and their buddy are (first-run setup) ----
+  /** the first-run setup has been completed or skipped */
+  onboarded: boolean;
+  userName: string;
+  /** what the user calls their assistant */
+  agentName: string;
+  /** free text: what the user wants help with */
+  goals: string;
+  /** topics picked in setup */
+  interests: string[];
+  tone: Tone;
+  /** IANA name like Asia/Kolkata, or 'auto' for the phone's own zone */
+  timezone: string;
+  /** id of the chosen mascot ('orb' is the built-in one) */
+  buddy: string;
+  /** MCP servers and remote computers the agent may use */
+  mcpServers: McpServerConfig[];
+
   activeModel: ModelId | null;
   systemPrompt: string;
   voicePrompt: string;
@@ -46,6 +67,15 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  onboarded: false,
+  userName: '',
+  agentName: 'Pocket',
+  goals: '',
+  interests: [],
+  tone: 'friendly',
+  timezone: 'auto',
+  buddy: 'orb',
+  mcpServers: [],
   activeModel: null,
   systemPrompt: 'You are a helpful, concise assistant running privately on the user\'s phone.',
   voicePrompt:

@@ -264,6 +264,7 @@ function ConnectionsTab() {
 
 function OptionsTab() {
   const notes = useAgents((s) => s.notes);
+  const name = useApp((s) => s.settings.agentName) || 'Pocket';
   const web = useApp((s) => s.settings.agentWeb);
   const parallel = useApp((s) => s.settings.agentParallel);
   const confirm = useApp((s) => s.settings.confirmWrites);
@@ -274,7 +275,7 @@ function OptionsTab() {
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={shared.h2}>Internet access</Text>
-            <Text style={styles.meta}>Lets Pocket search the web and read pages. Off keeps every task fully offline.</Text>
+            <Text style={styles.meta}>Lets {name} search the web and read pages. Off keeps every task fully offline.</Text>
           </View>
           <Switch value={web} onValueChange={(v) => setSettings({ agentWeb: v })} />
         </View>
@@ -284,7 +285,7 @@ function OptionsTab() {
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={shared.h2}>Ask before acting</Text>
-            <Text style={styles.meta}>Pocket must get your approval before posting to Slack, sending email or creating calendar events. Strongly recommended.</Text>
+            <Text style={styles.meta}>{name} must get your approval before posting to Slack, sending email or creating calendar events. Strongly recommended.</Text>
           </View>
           <Switch value={confirm} onValueChange={(v) => setSettings({ confirmWrites: v })} />
         </View>
@@ -294,7 +295,7 @@ function OptionsTab() {
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={shared.h2}>Helpers working at once</Text>
-            <Text style={styles.meta}>Pocket can split a big job between hidden helpers that work in parallel. More is faster overall but uses more memory. Applies after a model restart.</Text>
+            <Text style={styles.meta}>{name} can split a big job between hidden helpers that work in parallel. More is faster overall but uses more memory. Applies after a model restart.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepBtn} onPress={() => setSettings({ agentParallel: Math.max(1, parallel - 1) })}>
@@ -309,7 +310,7 @@ function OptionsTab() {
       </View>
 
       <Text style={styles.label}>Notebook ({notes.length})</Text>
-      {notes.length === 0 ? <Text style={styles.meta}>Notes Pocket saves for you show up here.</Text> : null}
+      {notes.length === 0 ? <Text style={styles.meta}>Notes {name} saves for you show up here.</Text> : null}
       {notes.slice().reverse().map((n) => (
         <View key={n.id} style={styles.card}>
           <Text style={styles.resultText} selectable>{n.text}</Text>

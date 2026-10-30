@@ -3,6 +3,7 @@ import type { Skill } from './skills.ts';
 import type { Agent, AgentMsg, AgentTask, Pending, Step, Tool, ToolCall, ToolSchema } from './types.ts';
 import { MAX_DELEGATION_DEPTH } from './types.ts';
 import { formatDateTime } from './tools.ts';
+import { resolveZone, toWall, zoneLabel } from '../lib/tz.ts';
 
 export interface LlmResponse {
   content: string;
@@ -30,6 +31,11 @@ export interface EngineDeps {
   now: () => Date;
   signal?: AbortSignal;
   maxSteps?: number;
+  /** the user's time zone ('auto' = the phone's) and a line about who they are, for the prompt */
+  zone?: string;
+  persona?: string;
+  /** extra playbooks (one per MCP server) */
+  extraSkills?: Skill[];
   /** ask the user before any tool that has an `approval` description runs */
   requireApproval?: boolean;
   /** live progress (UI + persistence); the returned patch of runTask is the final one */
@@ -39,11 +45,11 @@ export interface EngineDeps {
 const MAX_TOOL_OUTPUT = 3000;
 const MAX_WEB_CALLS = 3;
 
-export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: number, skills: Skill[] = [], canDelegate = true): string {
+export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: number, skills: Skill[] = [], canDelegate = true, zone = 'auto', persona = ''): string {
   const mates = team.filter((a) => a.id !== agent.id);
   const lines = [
     `You are ${agent.name}, a small assistant running privately on the user's phone. ${agent.role}`,
-    `Current time: ${formatDateTime(now)}.`,
+    `Current time: ${formatDateTime(toWall(now, resolveZone(zone)), zoneLabel(zone))}.`,
     '',
     'RULES',
     '1. Do exactly what the user asked, nothing extra.',
@@ -52,6 +58,7 @@ export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: numb
     '4. If you are missing a detail you cannot reasonably guess (for example the time of a reminder), call ask_user with one short question.',
     '5. When the work is done, reply with one or two short sentences and no tool call.',
   ];
+  if (persona) lines.push('', persona);
   if (skills.length) lines.push('', skillPrompt(skills));
   if (canDelegate && mates.length && depth < MAX_DELEGATION_DEPTH) {
     lines.push('', `Teammates you can hand work to with delegate_task: ${mates.map((m) => `${m.name} (${m.role})`).join('; ')}.`);
@@ -112,7 +119,7 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
   const messages: AgentMsg[] = task.messages.length ? [...task.messages] : [{ role: 'user', content: task.goal }];
   const steps: Step[] = [...task.steps];
   let stepCount = task.stepCount;
-  const skills = pickSkills(task.goal, deps.tools.map((t) => t.name));
+  const skills = pickSkills(task.goal, deps.tools.map((t) => t.name), deps.extraSkills);
   const tools = allowedTools(skills, deps.tools);
   const canDelegate = task.depth < MAX_DELEGATION_DEPTH && deps.team.some((a) => a.id !== deps.agent.id) && skills.some((k) => k.delegate);
   const schemas = toolSchemas(tools, canDelegate);
@@ -123,7 +130,7 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
 
   const push = (s: Omit<Step, 't'>) => steps.push({ ...s, t: deps.now().getTime() });
   const sync = () => deps.onUpdate({ messages: [...messages], steps: [...steps], stepCount });
-  const system = () => systemPrompt(deps.agent, deps.team, deps.now(), task.depth, skills, canDelegate);
+  const system = () => systemPrompt(deps.agent, deps.team, deps.now(), task.depth, skills, canDelegate, deps.zone ?? 'auto', deps.persona ?? '');
   if (!steps.length) push({ kind: 'info', title: `Skill: ${skills.map((k) => k.name).join(' + ')}`, detail: `Tools: ${tools.map((t) => t.name).join(', ') || 'none'}` });
 
   try {

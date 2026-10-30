@@ -62,8 +62,10 @@ export function deserialize(raw: string | null): SavedAgents {
       pending: t.pending ?? [],
       status: t.status === 'running' ? 'queued' : t.status,
     }));
+    const mainName = saved.find((a) => a.id === 'atlas')?.name;
+    const builtins = DEFAULT_AGENTS.map((d) => (d.id === 'atlas' && mainName ? { ...d, name: mainName } : d));
     return {
-      agents: [...DEFAULT_AGENTS, ...custom],
+      agents: [...builtins, ...custom],
       tasks,
       notes: Array.isArray(j.notes) ? j.notes : [],
       reminders: Array.isArray(j.reminders) ? j.reminders : [],
