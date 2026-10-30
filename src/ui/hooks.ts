@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { formFor, isMegaActive, stageFor } from '../buddies/evolution';
+import type { Form, Stage } from '../buddies/evolution';
 import { appStore } from '../state/app';
 import type { AppState } from '../state/app';
 import { downloads } from '../models/downloads';
@@ -38,4 +40,20 @@ export function useServer(): ServerStatus {
 
 export function useLogs(): LogEntry[] {
   return useSyncExternalStore(log.subscribe, () => log.entries());
+}
+
+/** The selected buddy's evolution state; re-renders when Mega runs out. */
+export function useBuddyForm(): { buddyId: string; xp: number; stage: Stage; form: Form; megaActive: boolean; megaUntil: number } {
+  const buddyId = useApp((st) => st.settings.buddy);
+  const xp = useApp((st) => st.settings.buddyXp[st.settings.buddy] ?? 0);
+  const megaUntil = useApp((st) => st.settings.megaUntil);
+  const [, force] = useState(0);
+  useEffect(() => {
+    const left = megaUntil - Date.now();
+    if (left <= 0) return undefined;
+    const t = setTimeout(() => force((n) => n + 1), left + 50);
+    return () => clearTimeout(t);
+  }, [megaUntil]);
+  const megaActive = isMegaActive(megaUntil, Date.now());
+  return { buddyId, xp, stage: stageFor(xp), form: formFor(xp, megaActive), megaActive, megaUntil };
 }

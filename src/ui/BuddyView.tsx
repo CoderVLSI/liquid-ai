@@ -7,6 +7,8 @@ import { getBuddy } from '../buddies/registry';
 import { choosePose } from '../buddies/mood';
 import type { Mood, Pose } from '../buddies/mood';
 import { tap } from '../lib/haptics';
+import { useBuddyForm } from './hooks';
+import type { Form } from '../buddies/evolution';
 
 const loop = (v: Animated.Value, to: number, half: number, easing = Easing.inOut(Easing.sin)) =>
   Animated.loop(
@@ -24,14 +26,20 @@ const orbMood = (m: Mood) => (m === 'asleep' ? 'asleep' : m === 'working' ? 'wor
  * model works) and moves the picture itself: breathing, bobbing, wobbling while it works, hopping when it needs you,
  * a happy bounce when you tap it. Everything runs on the native thread and stops when animations are off.
  */
-export function BuddyView({ buddyId, mood, size = 140, tappable = true }: { buddyId: string; mood: Mood; size?: number; tappable?: boolean }) {
+export function BuddyView({ buddyId, mood, size = 140, tappable = true, form }: { buddyId: string; mood: Mood; size?: number; tappable?: boolean; form?: Form }) {
   const buddy = useMemo(() => getBuddy(buddyId), [buddyId]);
+  const mine = useBuddyForm();
+  // without an explicit form: the current form of the user's own buddy, the base form of any other
+  const shown: Form = form ?? (buddy.id === mine.buddyId ? mine.form : 'base');
   if (buddy.id === 'orb') return <Mascot mood={orbMood(mood)} size={size / 1.3} />;
-  return <SpriteBuddy buddyId={buddy.id} mood={mood} size={size} tappable={tappable} />;
+  return <SpriteBuddy buddyId={buddy.id} mood={mood} size={size} tappable={tappable} form={shown} />;
 }
 
-function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: string; mood: Mood; size: number; tappable: boolean }) {
+function SpriteBuddy({ buddyId, mood: moodProp, size, tappable, form }: { buddyId: string; mood: Mood; size: number; tappable: boolean; form: Form }) {
   const buddy = getBuddy(buddyId);
+  // the evolved art when it exists (its own poses only, so the look never mixes), else the base art plus an aura
+  const formArt = form === 'base' ? undefined : buddy.forms?.[form];
+  const poseSources = formArt?.poses ?? buddy.poses;
   const reduce = useReduceMotion();
   const [blink, setBlink] = useState(false);
   const [mouth, setMouth] = useState(false);
@@ -45,7 +53,7 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
   const squash = useRef(new Animated.Value(0)).current; // the happy bounce: 0 rest, 1 jump
   const zzz = useRef(new Animated.Value(0)).current;
 
-  const has = useCallback((p: Pose) => buddy.poses[p] != null, [buddy]);
+  const has = useCallback((p: Pose) => poseSources[p] != null, [poseSources]);
   const pose = choosePose(mood, { blink, mouth }, has);
 
   // breathing + gentle bob, always (unless animations are off)
@@ -161,10 +169,20 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
   const rotate = wobble.interpolate({ inputRange: [0, 1], outputRange: ['-3.5deg', '3.5deg'] });
   const shadowScale = Animated.add(1, Animated.multiply(squash, -0.25));
 
-  const images = useMemo(() => (Object.keys(buddy.poses) as Pose[]).map((p) => ({ p, src: buddy.poses[p]! })), [buddy]);
+  const images = useMemo(() => (Object.keys(poseSources) as Pose[]).map((p) => ({ p, src: poseSources[p]! })), [poseSources]);
+  const aura = form === 'mega' ? '#FFD65A' : form === 'stage3' ? buddy.color : !formArt && form === 'stage2' ? buddy.color : null;
 
   const body = (
-    <View style={{ width: size, height: size }} accessibilityLabel={`${buddy.name} is ${mood}`}>
+    <View style={{ width: size, height: size }} accessibilityLabel={`${formArt?.name ?? buddy.name} is ${mood}`}>
+      {aura ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.aura,
+            { left: size * 0.05, top: size * 0.1, width: size * 0.9, height: size * 0.9, borderRadius: size * 0.45, backgroundColor: aura, opacity: breathe.interpolate({ inputRange: [0, 1], outputRange: form === 'mega' ? [0.22, 0.42] : [0.1, 0.22] }) },
+          ]}
+        />
+      ) : null}
       <Animated.View style={[styles.shadow, { width: size * 0.62, bottom: size * 0.02, transform: [{ scaleX: shadowScale }] }]} />
       <Animated.View style={{ width: size, height: size, transform: [{ translateY }, { rotate }, { scaleX }, { scaleY }] }}>
         {images.map(({ p, src }) => (
@@ -202,6 +220,7 @@ export function BuddyThumb({ buddyId, size = 72 }: { buddyId: string; size?: num
 
 const styles = StyleSheet.create({
   img: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  aura: { position: 'absolute' },
   shadow: { position: 'absolute', alignSelf: 'center', height: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.28)' },
   zzz: { position: 'absolute', color: '#C8E6FF', fontWeight: '800' },
 });

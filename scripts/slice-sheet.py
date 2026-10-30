@@ -14,6 +14,8 @@ Turns a character sheet (a grid of poses, e.g. made with ChatGPT) into the buddy
   --erase-shadow             also remove soft drop shadows under the character
   --inset 8                  pixels to ignore at the edge of each cell (grid lines, neighbours)
   --size 512                 output size of each pose
+  --form stage2|stage3|mega  write an evolved form into <id>/<form>/ (the base buddy must already exist)
+  --form-name "Bloopa"       display name of that form
 
 Needs Pillow:  pip install pillow
 Poses end up the same size and standing on the same baseline, so the app can swap between them without jumping.
@@ -121,6 +123,8 @@ def main():
     ap.add_argument("--erase-shadow", action="store_true", help="also remove soft shadows (darker versions of the background colour)")
     ap.add_argument("--inset", type=int, default=8)
     ap.add_argument("--size", type=int, default=512)
+    ap.add_argument("--form", choices=["stage2", "stage3", "mega"], default="")
+    ap.add_argument("--form-name", default="")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "assets", "buddies"))
     a = ap.parse_args()
 
@@ -149,15 +153,26 @@ def main():
     # one scale for every pose, so the character keeps its size from pose to pose
     inner = int(a.size * 0.92)
     scale = min(inner / max(c.width for c in cut.values()), inner / max(c.height for c in cut.values()))
-    folder = os.path.join(a.out, a.id)
+    folder = os.path.join(a.out, a.id, a.form) if a.form else os.path.join(a.out, a.id)
     os.makedirs(folder, exist_ok=True)
     for pose, c in cut.items():
         c = c.resize((max(1, round(c.width * scale)), max(1, round(c.height * scale))), Image.LANCZOS)
         canvas = Image.new("RGBA", (a.size, a.size), (0, 0, 0, 0))
         canvas.alpha_composite(c, ((a.size - c.width) // 2, a.size - c.height - int(a.size * 0.04)))  # feet on one baseline
         canvas.save(os.path.join(folder, pose + ".png"))
-    with open(os.path.join(folder, "buddy.json"), "w") as f:
-        json.dump({"name": a.name or a.id.capitalize(), "tagline": a.tagline, "color": a.color}, f, indent=2)
+    meta_path = os.path.join(a.out, a.id, "buddy.json")
+    if a.form:
+        meta = {}
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                meta = json.load(f)
+        if a.form_name:
+            meta.setdefault("forms", {}).setdefault(a.form, {})["name"] = a.form_name
+            with open(meta_path, "w") as f:
+                json.dump(meta, f, indent=2)
+    else:
+        with open(meta_path, "w") as f:
+            json.dump({"name": a.name or a.id.capitalize(), "tagline": a.tagline, "color": a.color}, f, indent=2)
     print("wrote %d poses to %s" % (len(cut), os.path.abspath(folder)))
     print("next: npm run buddies   (CI does it for you when you push)")
 

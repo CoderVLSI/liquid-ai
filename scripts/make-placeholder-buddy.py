@@ -84,14 +84,42 @@ def text(d, s, x, y, size, fill=INK):
     d.text((x, y), s, font=f, fill=fill, anchor="mm")
 
 
-def draw(pose):
+FORMS = {
+    "base": ((58, 214, 238, 255), (24, 128, 172, 255), (150, 240, 250, 255)),
+    "stage2": ((70, 160, 255, 255), (30, 80, 190, 255), (160, 205, 255, 255)),
+    "stage3": ((150, 110, 255, 255), (80, 50, 170, 255), (205, 185, 255, 255)),
+    "mega": ((255, 214, 90, 255), (200, 120, 30, 255), (255, 244, 190, 255)),
+}
+
+
+def decorate(d, form, cy):
+    cx = S // 2
+    if form in ("stage2", "stage3", "mega"):
+        sparkle(d, cx, cy - 330, 46 if form == "stage2" else 54)  # a star on the tip
+    if form in ("stage3", "mega"):
+        for dx in (-150, 150):  # side crests
+            d.polygon([(cx + dx, cy - 160), (cx + dx * 1.7, cy - 330), (cx + dx * 0.6, cy - 250)], fill=GOLD, outline=INK)
+    if form == "mega":
+        for x, y, r in ((cx - 330, cy - 200, 40), (cx + 340, cy - 120, 34), (cx - 300, cy + 120, 28), (cx + 300, cy + 200, 36)):
+            sparkle(d, x, y, r)
+
+
+def draw(pose, form="base"):
+    global BODY, BODY_DARK, BELLY
+    BODY, BODY_DARK, BELLY = FORMS[form]
     im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).ellipse([S // 2 - 270, 880, S // 2 + 270, 960], fill=(0, 0, 0, 70))
     im.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14)))
     d = ImageDraw.Draw(im)
     cy = 600 + (24 if pose == "sleep" else 0)
+    if form == "mega":
+        glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        ImageDraw.Draw(glow).ellipse([S // 2 - 400, cy - 420, S // 2 + 400, cy + 330], fill=(255, 230, 120, 110))
+        im.alpha_composite(glow.filter(ImageFilter.GaussianBlur(40)))
+        d = ImageDraw.Draw(im)
     body(d, cy)
+    decorate(d, form, cy)
     cx = S // 2
     ex, ey = 150, cy + 20
     lx, rx = cx - ex, cx + ex
@@ -130,10 +158,15 @@ def draw(pose):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for pose in ("idle", "blink", "talk", "happy", "think", "wait", "sleep", "sad"):
-        draw(pose).save(os.path.join(OUT, pose + ".png"))
+    poses = ("idle", "blink", "talk", "happy", "think", "wait", "sleep", "sad")
+    for form in ("base", "stage2", "stage3", "mega"):
+        folder = OUT if form == "base" else os.path.join(OUT, form)
+        os.makedirs(folder, exist_ok=True)
+        for pose in poses:
+            draw(pose, form).save(os.path.join(folder, pose + ".png"))
     with open(os.path.join(OUT, "buddy.json"), "w") as f:
-        json.dump({"name": "Bloop", "tagline": "A placeholder water-drop. Swap in your own art any time.", "color": "#27E8F6"}, f, indent=2)
+        json.dump({"name": "Bloop", "tagline": "A placeholder water-drop. Swap in your own art any time.", "color": "#27E8F6",
+                   "forms": {"stage2": {"name": "Bloopa"}, "stage3": {"name": "Tidalon"}, "mega": {"name": "Mega Tidalon"}}}, f, indent=2)
     print("wrote", os.path.abspath(OUT))
 
 

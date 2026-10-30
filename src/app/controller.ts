@@ -18,11 +18,13 @@ import { RealtimeClient } from '../net/RealtimeClient';
 import * as Clipboard from 'expo-clipboard';
 import { withPersona } from '../state/profile';
 import { mcp } from '../mcp/manager';
+import { MEGA_MINUTES, XP, dayKey, evolvedBetween, megaCharges, nextStreak } from '../buddies/evolution';
+import { resolveZone, toWall } from '../lib/tz';
 import { tap } from '../lib/haptics';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
 import { buildRequest } from '../chat/history';
-import { renameMainAgent, startAgents } from '../agents/runner';
+import { onTaskDone, renameMainAgent, startAgents } from '../agents/runner';
 import { startConnections } from '../connections/store';
 
 let filesDir = '';
@@ -90,6 +92,7 @@ export async function boot() {
   RNAppState.addEventListener('change', onAppState);
   void startConnections();
   void startAgents();
+  onTaskDone(() => awardXp(XP.task));
   mcp.init();
   void mcp.refreshAll();
 
@@ -125,6 +128,45 @@ export function toast(msg: string, ms = 3500) {
   appStore.set({ toast: msg });
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => appStore.set({ toast: null }), ms);
+}
+
+// ---- buddy evolution ---------------------------------------------------------------------------
+
+/** Using the app feeds the buddy. Crossing a stage line starts the evolution cutscene. */
+export function awardXp(amount: number) {
+  const s = appStore.get().settings;
+  const id = s.buddy;
+  const today = dayKey(toWall(new Date(), resolveZone(s.timezone)));
+  const st = nextStreak(s.lastActiveDay, s.streak, today);
+  const gain = amount + (st.bonus ? XP.dailyBonus : 0);
+  const before = s.buddyXp[id] ?? 0;
+  const after = before + gain;
+  setSettings({ buddyXp: { ...s.buddyXp, [id]: after }, streak: st.streak, lastActiveDay: today });
+  const form = evolvedBetween(before, after);
+  if (form) {
+    log.info('buddy', `${id} evolved to ${form} (${after} XP)`);
+    appStore.set({ evolving: { buddyId: id, form } });
+    tap('success');
+  }
+}
+
+/** Settings → Preview: plays the evolution cutscene with the current buddy (handy for checking new art). */
+export function previewEvolution(form: 'stage2' | 'stage3' = 'stage2') {
+  appStore.set({ evolving: { buddyId: appStore.get().settings.buddy, form } });
+}
+
+export function dismissEvolution() {
+  appStore.set({ evolving: null });
+}
+
+/** Spend a Mega charge: the buddy is in its Mega form for an hour. */
+export function startMega() {
+  const s = appStore.get().settings;
+  const xp = s.buddyXp[s.buddy] ?? 0;
+  if (megaCharges(xp, s.megaUsed) < 1 || s.megaUntil > Date.now()) return;
+  setSettings({ megaUsed: s.megaUsed + 1, megaUntil: Date.now() + MEGA_MINUTES * 60_000 });
+  tap('success');
+  toast('Mega Evolution!', 2000);
 }
 
 // ---- first-run setup ---------------------------------------------------------------------------
@@ -386,6 +428,7 @@ export async function sendMessage(rawText: string) {
     if (flushTimer) clearTimeout(flushTimer);
     updateMsg(replyId, { text: buf.trim() || '(no answer)', reasoning: reasoning || undefined, streaming: false });
     tap('light');
+    awardXp(XP.message);
     log.info('chat', `answered in ${Date.now() - t0} ms (first token ${firstAt ? firstAt - t0 : '-'} ms), finish=${res.finish}, ${buf.length} chars`);
   } catch (e: any) {
     if (flushTimer) clearTimeout(flushTimer);
@@ -464,7 +507,10 @@ export async function startVoice() {
         lastLevelAt = now;
         appStore.set((s) => ({ voice: { ...s.voice, level: rms } }));
       },
-      onUserTurn: (ms) => addMsg({ role: 'user', text: `🎤 Voice message · ${(ms / 1000).toFixed(1)} s`, voice: true }),
+      onUserTurn: (ms) => {
+        awardXp(XP.voiceTurn);
+        addMsg({ role: 'user', text: `🎤 Voice message · ${(ms / 1000).toFixed(1)} s`, voice: true });
+      },
       onResponseStart: (rid) => {
         assistantMsgs.set(rid, addMsg({ role: 'assistant', text: '', streaming: true }));
       },

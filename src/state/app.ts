@@ -43,6 +43,8 @@ export interface AppState {
   nativeMissing: boolean;
   /** the setup wizard is open (it also opens by itself until it was finished once) */
   setupOpen: boolean;
+  /** set when the buddy just evolved: the cutscene plays until it is dismissed */
+  evolving: { buddyId: string; form: 'stage2' | 'stage3' } | null;
 }
 
 export const appStore = createStore<AppState>({
@@ -59,4 +61,5 @@ export const appStore = createStore<AppState>({
   exitReasons: [],
   nativeMissing: false,
   setupOpen: false,
+  evolving: null,
 });

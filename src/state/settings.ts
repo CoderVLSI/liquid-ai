@@ -19,6 +19,14 @@ export interface Settings {
   timezone: string;
   /** id of the chosen mascot ('orb' is the built-in one) */
   buddy: string;
+  /** evolution: XP per buddy id, the streak of active days, and Mega state */
+  buddyXp: Record<string, number>;
+  streak: number;
+  lastActiveDay: string;
+  /** epoch ms until which the Mega form lasts (0 = not active) */
+  megaUntil: number;
+  /** Mega charges spent so far */
+  megaUsed: number;
   /** MCP servers and remote computers the agent may use */
   mcpServers: McpServerConfig[];
 
@@ -75,6 +83,11 @@ export const DEFAULT_SETTINGS: Settings = {
   tone: 'friendly',
   timezone: 'auto',
   buddy: 'orb',
+  buddyXp: {},
+  streak: 0,
+  lastActiveDay: '',
+  megaUntil: 0,
+  megaUsed: 0,
   mcpServers: [],
   activeModel: null,
   systemPrompt: 'You are a helpful, concise assistant running privately on the user\'s phone.',

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Scans assets/buddies/<id>/ and writes src/buddies/generated.ts, so adding a buddy is just adding a folder:
 //   assets/buddies/<id>/idle.png (required) + blink talk happy think wait sleep sad .png (optional) + buddy.json (optional)
-// buddy.json: { "name": "Bloop", "tagline": "A little water-drop...", "color": "#27E8F6" }
+// Evolved forms (optional): assets/buddies/<id>/stage2/, stage3/, mega/ with the same pose file names (idle.png required).
+// buddy.json: { "name": "Bloop", "tagline": "A little water-drop...", "color": "#27E8F6",
+//               "forms": { "stage2": {"name": "Bloopa"}, "stage3": {"name": "Tidalon"}, "mega": {"name": "Mega Tidalon"} } }
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +34,19 @@ if (fs.existsSync(dir)) {
     } catch {
       // no buddy.json: use defaults
     }
+    const forms = {};
+    for (const form of ['stage2', 'stage3', 'mega']) {
+      const sub = path.join(folder, form);
+      if (!fs.existsSync(sub) || !fs.statSync(sub).isDirectory()) continue;
+      const fp = POSES.filter((p) => fs.existsSync(path.join(sub, `${p}.png`)));
+      if (!fp.includes('idle')) {
+        console.warn(`skip form "${id}/${form}": it needs at least idle.png`);
+        continue;
+      }
+      forms[form] = { name: String(meta.forms?.[form]?.name || `${meta.name || id} ${form}`), poses: fp };
+    }
     entries.push({
+      forms,
       id,
       name: String(meta.name || id[0].toUpperCase() + id.slice(1)),
       tagline: String(meta.tagline || ''),
@@ -48,7 +62,20 @@ const body = entries
     (e) =>
       `  {\n    id: ${q(e.id)},\n    name: ${q(e.name)},\n    tagline: ${q(e.tagline)},\n    color: ${q(e.color)},\n    poses: {\n` +
       e.poses.map((p) => `      ${p}: require('../../assets/buddies/${e.id}/${p}.png'),`).join('\n') +
-      '\n    },\n  },',
+      '\n    },\n' +
+      (Object.keys(e.forms).length
+        ? '    forms: {\n' +
+          Object.entries(e.forms)
+            .map(
+              ([f, v]) =>
+                `      ${f}: {\n        name: ${q(v.name)},\n        poses: {\n` +
+                v.poses.map((p) => `          ${p}: require('../../assets/buddies/${e.id}/${f}/${p}.png'),`).join('\n') +
+                '\n        },\n      },',
+            )
+            .join('\n') +
+          '\n    },\n'
+        : '') +
+      '  },',
   )
   .join('\n');
 
@@ -59,4 +86,4 @@ const text =
 
 fs.mkdirSync(path.dirname(out), { recursive: true });
 if (!fs.existsSync(out) || fs.readFileSync(out, 'utf8') !== text) fs.writeFileSync(out, text);
-console.log(`buddies: ${entries.length ? entries.map((e) => `${e.id} (${e.poses.length} poses)`).join(', ') : 'none yet'}`);
+console.log(`buddies: ${entries.length ? entries.map((e) => `${e.id} (${e.poses.length} poses${Object.keys(e.forms).length ? ', forms: ' + Object.keys(e.forms).join('/') : ''})`).join(', ') : 'none yet'}`);

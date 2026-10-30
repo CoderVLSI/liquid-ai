@@ -417,6 +417,12 @@ function resolveParent(child: AgentTask) {
   patchTask(parent.id, resolvePending(parent, p.callId, content));
 }
 
+let taskDoneHook: (() => void) | null = null;
+/** called when a task the user gave finishes successfully (the app feeds the buddy XP) */
+export function onTaskDone(fn: () => void) {
+  taskDoneHook = fn;
+}
+
 function afterRun(id: string) {
   const t = find(id);
   if (!t) return;
@@ -425,6 +431,7 @@ function afterRun(id: string) {
   const background = inBackground();
 
   if (t.status === 'done' || t.status === 'failed' || t.status === 'cancelled') {
+    if (t.status === 'done' && !t.parentId) taskDoneHook?.();
     if (t.parentId) resolveParent(t);
     else if (background && t.status !== 'cancelled') {
       native.notify(notifyId(t.id), t.status === 'done' ? `${label} finished` : `${label} hit a problem`, (t.result ?? t.error ?? t.goal).slice(0, 300));

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Press as Pressable } from './Press';
 import { FadeIn } from './FadeIn';
+import { BuddyStatus } from './BuddyStatus';
 import { useAgents, useApp, useDownloads } from './hooks';
 import { colors, shared } from './theme';
 import { Icon } from './Icon';
@@ -116,6 +117,7 @@ export function AgentScreen() {
         <View style={styles.bubble}>
           <Text style={styles.bubbleText}>{line}</Text>
         </View>
+        <BuddyStatus compact={top.length > 0} />
         <View style={styles.heroBtns}>
           {!anyModel ? (
             <Pressable style={[shared.btn, shared.btnPrimary]} onPress={() => openSheet('models')}>

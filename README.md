@@ -69,6 +69,10 @@ A fresh install opens a 7-step wizard (skippable; reopen it any time from Settin
 
 Any remote **MCP server** (streamable HTTP; `src/mcp/`) can be added: its tools show up for the agent, with a *test connection* before saving and an *ask before its tools run* switch. For your **own PC or VM**, run `tools/pc-bridge/pc_bridge.py` there (one file, no dependencies, it is itself an MCP server): it prints a URL and a token to paste in the app. It is read-only by default, token-protected, limited to one folder, and every command/file change is approved on the phone. See `tools/pc-bridge/README.md` (use Tailscale or an SSH tunnel instead of opening it to the internet).
 
+### Evolution
+
+Your buddy grows as you use it: +1 XP per chat reply, +2 per voice turn, +3 per finished agent task, +5 the first time each day (with a day streak). **150 XP evolves it to Stage 2, 500 XP to Stage 3** (an evolution scene plays: Settings → *Preview evolution* shows it any time). From Stage 2 it earns **Mega charges** (one with Stage 2, then one per 250 XP, up to 3): spend one on the buddy screen for an hour of Mega form. Art for the forms goes in `assets/buddies/<id>/stage2|stage3|mega/` (same pose file names; Mega needs only idle/blink/talk/happy); without it the app shows the base art with an aura. Rules: `src/buddies/evolution.ts`; art prompt for Codex: `docs/CODEX_EVOLUTIONS_PROMPT.md`.
+
 ### Buddies (mascots)
 
 `assets/buddies/<id>/` holds 8 expression PNGs per character (idle, blink, talk, happy, think, wait, sleep, sad); CI turns the folders into the picker (`npm run buddies`). The app animates them (blink, mouth flap while speaking, thinking/waiting poses, breathing, hopping, tap-to-play). `docs/BUDDIES.md` has the ChatGPT prompts and `scripts/slice-sheet.py` turns a sheet into aligned transparent sprites. Bloop is a drawn placeholder.
