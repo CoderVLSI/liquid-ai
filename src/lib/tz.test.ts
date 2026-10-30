@@ -36,3 +36,17 @@ test('zone helpers', () => {
   assert.equal(zoneLabel('Africa/Cairo'), 'Africa/Cairo');
   assert.ok(ZONES.every((z) => z.id === 'auto' || zoneValid(z.id)), 'every preset is a real zone');
 });
+
+test('an engine that cannot do zones falls back to the phone clock instead of an invalid date', () => {
+  const real = Intl.DateTimeFormat;
+  const when = new Date(Date.UTC(2026, 9, 29, 9, 0));
+  try {
+    // @ts-expect-error simulate a runtime whose formatToParts returns nothing useful
+    Intl.DateTimeFormat = class { constructor() {} formatToParts() { return []; } resolvedOptions() { return { timeZone: 'UTC' }; } };
+    const w = toWall(when, 'Asia/Kolkata');
+    assert.ok(!Number.isNaN(w.getTime()));
+    assert.ok(!Number.isNaN(fromWall(new Date(2026, 9, 30, 9, 0), 'Asia/Kolkata').getTime()));
+  } finally {
+    Intl.DateTimeFormat = real;
+  }
+});

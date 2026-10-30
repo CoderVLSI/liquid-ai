@@ -87,7 +87,8 @@ export function toWall(date: Date, zone: string): Date {
   if (zone === deviceZone()) return new Date(date.getTime());
   try {
     const p = parts(date.getTime(), zone);
-    return new Date(p.y, p.mo - 1, p.d, p.h, p.mi, p.s, 0);
+    const w = new Date(p.y, p.mo - 1, p.d, p.h, p.mi, p.s, 0);
+    return Number.isNaN(w.getTime()) ? new Date(date.getTime()) : w; // an engine without zone support: the phone's own clock
   } catch {
     return new Date(date.getTime());
   }
@@ -100,7 +101,7 @@ export function fromWall(wall: Date, zone: string): Date {
     const asUtc = Date.UTC(wall.getFullYear(), wall.getMonth(), wall.getDate(), wall.getHours(), wall.getMinutes(), wall.getSeconds(), 0);
     let t = asUtc - offsetMs(asUtc, zone);
     t = asUtc - offsetMs(t, zone); // second pass settles the answer around daylight-saving changes
-    return new Date(t);
+    return Number.isNaN(t) ? new Date(wall.getTime()) : new Date(t);
   } catch {
     return new Date(wall.getTime());
   }
