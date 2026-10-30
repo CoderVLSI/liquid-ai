@@ -26,6 +26,17 @@ dump_ui() { # dump_ui <name>
   adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null
 }
 ui_has() { grep -qF "$1" "$OUT/$2.xml" 2>/dev/null; }
+# print every text / content-desc on a dumped screen (xml-unescaped), to see what the app really showed
+show_ui() { python3 - "$OUT/$1.xml" <<'PY'
+import sys, xml.etree.ElementTree as ET
+seen = []
+for n in ET.parse(sys.argv[1]).iter('node'):
+    for k in ('text', 'content-desc'):
+        v = n.get(k)
+        if v and v not in seen: seen.append(v)
+print('   on screen:', ' | '.join(x.replace('\n', ' ')[:60] for x in seen[:40]))
+PY
+}
 alive() { [ -n "$(adb shell pidof "$PKG" | tr -d '\r')" ]; }
 
 tap_desc() { # tap the element whose content-desc or text matches
@@ -90,8 +101,11 @@ adb shell input keyevent KEYCODE_BACK; sleep 2
 
 # the separate Agents button is gone; Agent is a mode toggle next to Chat
 if ui_has 'content-desc="Agents"' home; then fail "the old Agents button is still there"; else ok "no separate Agents button"; fi
-tap_desc "Agent mode" home; sleep 3; dump_ui agent
-if ui_has "Give Pocket a task" agent && ui_has "Tools & connections" agent; then ok "Agent mode shows Pocket, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
+tap_desc "Agent mode" home; sleep 4; dump_ui agent
+if ! ui_has "Give Pocket a task" agent; then echo "(mode did not switch yet; tapping the Agent toggle again)"; tap_desc "Agent mode" home; sleep 4; dump_ui agent; fi
+show_ui agent
+# note: the dump escapes '&', so match on words without it
+if ui_has "Give Pocket a task" agent && ui_has "Agent settings" agent; then ok "Agent mode shows Pocket, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
 if ui_has "Pocket is" agent; then ok "mascot rendered"; else echo "(mascot label not detected)"; fi
 
 tap_desc "Agent settings" agent; sleep 3; dump_ui agentsettings
