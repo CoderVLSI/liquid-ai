@@ -39,6 +39,18 @@ PY
 }
 alive() { [ -n "$(adb shell pidof "$PKG" | tr -d '\r')" ]; }
 
+# Press BACK until the main screen (with the Chat/Agent toggle) is showing again. A modal sheet only exposes its own
+# window to uiautomator, so the toggle appearing proves the sheet really closed.
+close_sheet() {
+  for i in 1 2 3 4; do
+    adb shell input keyevent KEYCODE_BACK; sleep 2
+    dump_ui probe
+    if ui_has 'content-desc="Agent mode"' probe; then dump_ui home; return 0; fi
+  done
+  fail "BACK did not return to the main screen after 4 tries"; show_ui probe
+  return 1
+}
+
 tap_desc() { # tap the element whose content-desc or text matches
   python3 - "$OUT/$2.xml" "$1" <<'EOF' | { read -r x y || { echo "none"; exit 0; }; adb shell input tap "$x" "$y"; echo "tapped $x $y"; }
 import re, sys, xml.etree.ElementTree as ET
@@ -89,15 +101,15 @@ if grep -q "LiquidNative module created" "$OUT/logcat.txt"; then ok "native modu
 echo "== tap through screens"
 tap_desc "Choose model" home; sleep 3; dump_ui models
 if ui_has "Models" models && (ui_has "Download" models || ui_has "LFM3-Omni" models); then ok "Models sheet opens"; else fail "Models sheet did not open"; fi
-adb shell input keyevent KEYCODE_BACK; sleep 2
+close_sheet
 
 tap_desc "Settings" home; sleep 3; dump_ui settings
 if ui_has "Live voice" settings || ui_has "Interrupt by speaking" settings; then ok "Settings sheet opens"; else fail "Settings sheet did not open"; fi
-adb shell input keyevent KEYCODE_BACK; sleep 2
+close_sheet
 
 tap_desc "Debug" home; sleep 4; dump_ui debug
 if ui_has "Logs" debug && ui_has "Crashes" debug; then ok "Debug sheet opens"; else fail "Debug sheet did not open"; fi
-adb shell input keyevent KEYCODE_BACK; sleep 2
+close_sheet
 
 # the separate Agents button is gone; Agent is a mode toggle next to Chat
 if ui_has 'content-desc="Agents"' home; then fail "the old Agents button is still there"; else ok "no separate Agents button"; fi
@@ -110,7 +122,7 @@ if ui_has "Pocket is" agent; then ok "mascot rendered"; else echo "(mascot label
 
 tap_desc "Agent settings" agent; sleep 3; dump_ui agentsettings
 if ui_has "Agent settings" agentsettings && ui_has "Connections" agentsettings; then ok "Agent settings sheet opens (options + connections)"; else fail "Agent settings did not open"; fi
-adb shell input keyevent KEYCODE_BACK; sleep 2
+close_sheet
 
 # give Pocket a task with no model downloaded: it must fail gracefully; starting the foreground service must not crash the app
 dump_ui agent2
