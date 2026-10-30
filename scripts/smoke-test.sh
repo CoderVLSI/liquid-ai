@@ -15,6 +15,14 @@ adb wait-for-device
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard 2>/dev/null || true
 
+# The CI emulator is a slow virtual phone: the system launcher can stall and pop an "isn't responding" dialog that
+# blocks every tap. Hide those dialogs (crashes are still detected through logcat / the process list) and settle first.
+adb shell settings put global hide_error_dialogs 1 || true
+adb shell settings put global window_animation_scale 0 || true
+adb shell settings put global transition_animation_scale 0 || true
+adb shell settings put global animator_duration_scale 0 || true
+echo "waiting for the emulator to settle..."; sleep 25
+
 echo "== install"
 adb install -r "$APK" || { fail "adb install failed"; exit 1; }
 adb shell pm grant "$PKG" android.permission.RECORD_AUDIO || true
@@ -23,6 +31,12 @@ adb logcat -c
 dump_ui() { # dump_ui <name>
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
+  if grep -q "isn't responding" "$OUT/$1.xml" 2>/dev/null; then
+    echo "(a system 'isn't responding' dialog appeared; pressing Wait)"
+    tap_desc "Wait" "$1" >/dev/null; sleep 3
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
+  fi
   adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null
 }
 ui_has() { grep -qF "$1" "$OUT/$2.xml" 2>/dev/null; }
