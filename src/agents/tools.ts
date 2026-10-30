@@ -94,7 +94,7 @@ export function buildTools(deps: ToolDeps): Tool[] {
     {
       name: 'set_reminder',
       description:
-        'Show a notification to the user later. Give either "minutes" from now, or "at" as a local date-time like 2026-10-30T09:00.',
+        'Use this whenever the user says remind me / notify me / deadline. Shows a notification later, even if the app is closed. Give either "minutes" from now, or "at" as a local date-time like 2026-10-30T09:00.',
       parameters: {
         type: 'object',
         properties: {
@@ -123,7 +123,7 @@ export function buildTools(deps: ToolDeps): Tool[] {
     },
     {
       name: 'web_search',
-      description: 'Search the web. Returns titles, links and snippets. Follow up with fetch_url to read a page.',
+      description: 'Search the public web for outside facts only (not for the user\'s own tasks, reminders or deadlines). Returns titles, links and snippets. Follow up with fetch_url to read a page.',
       web: true,
       parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
       async run(args) {
@@ -150,7 +150,7 @@ export function buildTools(deps: ToolDeps): Tool[] {
           }));
           return formatHits(hits);
         } catch (e: any) {
-          return `Search failed: ${e?.message ?? e}`;
+          return 'Search failed: the search service did not return usable results (offline, blocked or rate limited). Do not retry; continue without it or tell the user.';
         }
       },
     },

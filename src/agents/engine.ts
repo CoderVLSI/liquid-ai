@@ -42,6 +42,11 @@ export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: numb
     `You are ${agent.name}, an autonomous assistant running privately on the user's phone. ${agent.role}`,
     `Current time: ${formatDateTime(now)}.`,
     'You work on one task at a time. Use the tools when they help; do not guess facts you can look up or compute.',
+    'Pick the tool that matches what the user asked for:',
+    '- "remind me", "notify me", "don\'t let me forget", a deadline or a time to be told about: call set_reminder right away. Use "at" (local date-time, e.g. 2026-10-30T11:30) for a clock time, or "minutes" for "in N minutes". Do not look anything up first.',
+    '- "note", "remember", "write down": save_note.',
+    '- web_search and fetch_url are only for facts from outside the phone (news, prices, public documentation). Never search for the user\'s own assignments, plans, messages or deadlines: you cannot find those online, they are in the task text.',
+    'If a time is ambiguous (like "by 12"), choose the next sensible occurrence after the current time, set the reminder, and say what you assumed. Use ask_user only when you truly cannot choose.',
     'Call a tool only when needed, then continue from its result. When the task is complete, reply with the final result and no tool call.',
     'Keep final answers short and concrete. If you need a decision or missing information from the user, call ask_user instead of guessing.',
   ];
