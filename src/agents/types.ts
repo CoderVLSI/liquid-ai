@@ -71,6 +71,8 @@ export interface Agent {
   /** one line describing what this teammate is for; also becomes part of its prompt */
   role: string;
   builtin?: boolean;
+  /** a helper the user never talks to directly: only the main agent hands work to it */
+  hidden?: boolean;
 }
 
 export interface Note {

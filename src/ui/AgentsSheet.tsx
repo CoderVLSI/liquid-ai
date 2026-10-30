@@ -1,16 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Sheet } from './Sheet';
 import { useAgents, useApp, useConnections } from './hooks';
 import { colors, shared } from './theme';
-import { addAgent, answerTask, approveTask, cancelTask, clearFinished, enqueue, notesApi, removeAgent, removeTask, retryTask } from '../agents/runner';
+import { answerTask, approveTask, cancelTask, notesApi, removeTask, retryTask } from '../agents/runner';
 import { openSheet, setSettings } from '../app/controller';
 import type { AgentTask, Step, TaskStatus } from '../agents/types';
 import { connectSlack, connStore, disconnectGoogle, disconnectSlack, startGoogleSignIn } from '../connections/store';
 import { REDIRECT_URI, SCOPE_LABELS } from '../connections/google';
 import type { GoogleScope } from '../connections/google';
 
-const STATUS: Record<TaskStatus, { label: string; color: string }> = {
+export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   scheduled: { label: 'Scheduled', color: colors.muted },
   queued: { label: 'Queued', color: colors.muted },
   running: { label: 'Working…', color: colors.accent },
@@ -23,14 +23,14 @@ const STATUS: Record<TaskStatus, { label: string; color: string }> = {
 
 const STEP_ICON: Record<Step['kind'], string> = { tool: '🔧', result: '✅', ask: '❓', delegate: '👥', info: '💭', error: '⚠️' };
 
-const IDEAS = [
+export const IDEAS = [
   'Find the latest news about on-device AI and summarize it in 5 bullets',
   'Plan my day: ask me what I need to do, then save it as a note',
   'Remind me to stretch in 30 minutes',
   'What is 18% of 2,450 plus 75?',
 ];
 
-function ago(t: number): string {
+export function ago(t: number): string {
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
   if (s < 60) return 'just now';
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
@@ -38,13 +38,13 @@ function ago(t: number): string {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-function inFuture(t?: number): string {
+export function inFuture(t?: number): string {
   if (!t) return '';
   const m = Math.max(0, Math.round((t - Date.now()) / 60000));
   return m < 60 ? `in ${m} min` : m < 1440 ? `in ${Math.round(m / 60)} h` : `in ${Math.round(m / 1440)} d`;
 }
 
-function Chip({ label, on, onPress }: { label: string; on?: boolean; onPress: () => void }) {
+export function Chip({ label, on, onPress }: { label: string; on?: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={[styles.chip, on && styles.chipOn]}>
       <Text style={[styles.chipText, on && { color: colors.accent }]}>{label}</Text>
@@ -52,58 +52,7 @@ function Chip({ label, on, onPress }: { label: string; on?: boolean; onPress: ()
   );
 }
 
-function NewTask() {
-  const agents = useAgents((s) => s.agents);
-  const [goal, setGoal] = useState('');
-  const [agentId, setAgentId] = useState('atlas');
-  const [delay, setDelay] = useState(0);
-  const [every, setEvery] = useState(0);
-
-  const start = () => {
-    if (!goal.trim()) return;
-    enqueue({ agentId, goal, runAt: delay ? Date.now() + delay * 60_000 : undefined, everyMinutes: every || undefined });
-    setGoal('');
-    setDelay(0);
-    setEvery(0);
-  };
-
-  return (
-    <View style={styles.card}>
-      <TextInput
-        style={styles.input}
-        value={goal}
-        onChangeText={setGoal}
-        placeholder="Give a teammate a task…"
-        placeholderTextColor={colors.muted}
-        multiline
-      />
-      <Text style={styles.label}>Who</Text>
-      <View style={styles.row}>
-        {agents.map((a) => (
-          <Chip key={a.id} label={`${a.emoji} ${a.name}`} on={agentId === a.id} onPress={() => setAgentId(a.id)} />
-        ))}
-      </View>
-      <Text style={styles.label}>When</Text>
-      <View style={styles.row}>
-        <Chip label="Now" on={delay === 0} onPress={() => setDelay(0)} />
-        <Chip label="In 10 min" on={delay === 10} onPress={() => setDelay(10)} />
-        <Chip label="In 1 hour" on={delay === 60} onPress={() => setDelay(60)} />
-        <Chip label="In 8 hours" on={delay === 480} onPress={() => setDelay(480)} />
-      </View>
-      <Text style={styles.label}>Repeat</Text>
-      <View style={styles.row}>
-        <Chip label="Once" on={every === 0} onPress={() => setEvery(0)} />
-        <Chip label="Hourly" on={every === 60} onPress={() => setEvery(60)} />
-        <Chip label="Daily" on={every === 1440} onPress={() => setEvery(1440)} />
-      </View>
-      <Pressable style={[shared.btn, shared.btnPrimary, { marginTop: 14 }, !goal.trim() && { opacity: 0.4 }]} onPress={start} disabled={!goal.trim()}>
-        <Text style={[shared.btnText, shared.btnTextPrimary]}>Start task</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function TaskCard({ task, depth = 0 }: { task: AgentTask; depth?: number }) {
+export function TaskCard({ task, depth = 0, compact = false }: { task: AgentTask; depth?: number; compact?: boolean }) {
   const agents = useAgents((s) => s.agents);
   const tasks = useAgents((s) => s.tasks);
   const [open, setOpen] = useState(task.status === 'waiting');
@@ -120,12 +69,12 @@ function TaskCard({ task, depth = 0 }: { task: AgentTask; depth?: number }) {
       <View style={[styles.card, task.status === 'waiting' && { borderColor: colors.warn }]}>
         <Pressable onPress={() => setOpen((v) => !v)}>
           <View style={styles.head}>
-            <Text style={styles.who}>{agent?.emoji ?? '🤖'} {agent?.name ?? 'Agent'}</Text>
+            <Text style={styles.who}>{agent?.hidden ? `🛠 Helper · ${agent.name}` : `${agent?.emoji ?? '🤖'} ${agent?.name ?? 'Agent'}`}</Text>
             <View style={[styles.pill, { backgroundColor: st.color + '26' }]}>
               <Text style={[styles.pillText, { color: st.color }]}>{st.label}</Text>
             </View>
           </View>
-          <Text style={styles.goal} numberOfLines={open ? undefined : 2}>{task.goal}</Text>
+          {compact ? null : <Text style={styles.goal} numberOfLines={open ? undefined : 2}>{task.goal}</Text>}
           <Text style={styles.meta}>
             {task.status === 'scheduled' ? `Starts ${inFuture(task.runAt)}` : ago(task.updatedAt)}
             {task.everyMinutes ? ` · repeats every ${task.everyMinutes >= 1440 ? 'day' : 'hour'}` : ''}
@@ -213,38 +162,6 @@ function TaskCard({ task, depth = 0 }: { task: AgentTask; depth?: number }) {
         <TaskCard key={c.id} task={c} depth={depth + 1} />
       ))}
     </View>
-  );
-}
-
-function TasksTab() {
-  const tasks = useAgents((s) => s.tasks);
-  const top = useMemo(() => tasks.filter((t) => !t.parentId).slice().reverse(), [tasks]);
-  const hasFinished = tasks.some((t) => t.status === 'done' || t.status === 'failed' || t.status === 'cancelled');
-  return (
-    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-      <NewTask />
-      {top.length === 0 ? (
-        <View>
-          <Text style={styles.label}>Ideas</Text>
-          {IDEAS.map((i) => (
-            <Pressable key={i} style={styles.idea} onPress={() => enqueue({ agentId: 'atlas', goal: i })}>
-              <Text style={styles.ideaText}>{i}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : (
-        <>
-          {top.map((t) => (
-            <TaskCard key={t.id} task={t} />
-          ))}
-          {hasFinished ? (
-            <Pressable style={[shared.btn, { alignSelf: 'center', marginTop: 6 }]} onPress={clearFinished}>
-              <Text style={shared.btnText}>Clear finished</Text>
-            </Pressable>
-          ) : null}
-        </>
-      )}
-    </ScrollView>
   );
 }
 
@@ -344,15 +261,11 @@ function ConnectionsTab() {
   );
 }
 
-function TeamTab() {
-  const agents = useAgents((s) => s.agents);
+function OptionsTab() {
   const notes = useAgents((s) => s.notes);
   const web = useApp((s) => s.settings.agentWeb);
   const parallel = useApp((s) => s.settings.agentParallel);
   const confirm = useApp((s) => s.settings.confirmWrites);
-  const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState('');
-  const [role, setRole] = useState('');
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -360,7 +273,7 @@ function TeamTab() {
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={shared.h2}>Internet access</Text>
-            <Text style={styles.meta}>Lets agents search the web and read pages. Off keeps every task fully offline.</Text>
+            <Text style={styles.meta}>Lets Pocket search the web and read pages. Off keeps every task fully offline.</Text>
           </View>
           <Switch value={web} onValueChange={(v) => setSettings({ agentWeb: v })} />
         </View>
@@ -370,7 +283,7 @@ function TeamTab() {
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={shared.h2}>Ask before acting</Text>
-            <Text style={styles.meta}>Agents must get your approval before posting to Slack, sending email or creating calendar events. Strongly recommended.</Text>
+            <Text style={styles.meta}>Pocket must get your approval before posting to Slack, sending email or creating calendar events. Strongly recommended.</Text>
           </View>
           <Switch value={confirm} onValueChange={(v) => setSettings({ confirmWrites: v })} />
         </View>
@@ -379,8 +292,8 @@ function TeamTab() {
       <View style={styles.card}>
         <View style={styles.rowBetween}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={shared.h2}>Swarm size</Text>
-            <Text style={styles.meta}>How many agents may work at the same time. Needs a model restart to take effect. More is faster overall but uses more memory.</Text>
+            <Text style={shared.h2}>Helpers working at once</Text>
+            <Text style={styles.meta}>Pocket can split a big job between hidden helpers that work in parallel. More is faster overall but uses more memory. Applies after a model restart.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepBtn} onPress={() => setSettings({ agentParallel: Math.max(1, parallel - 1) })}>
@@ -394,43 +307,8 @@ function TeamTab() {
         </View>
       </View>
 
-      <Text style={styles.label}>Teammates</Text>
-      {agents.map((a) => (
-        <View key={a.id} style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.who}>{a.emoji} {a.name}</Text>
-            {!a.builtin ? (
-              <Pressable onPress={() => removeAgent(a.id)} hitSlop={8}>
-                <Text style={{ color: colors.danger, fontSize: 13 }}>Remove</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <Text style={styles.meta}>{a.role}</Text>
-        </View>
-      ))}
-
-      <View style={styles.card}>
-        <Text style={shared.h2}>Add a teammate</Text>
-        <TextInput style={[styles.input, { marginTop: 8 }]} value={name} onChangeText={setName} placeholder="Name (e.g. Chef)" placeholderTextColor={colors.muted} />
-        <TextInput style={[styles.input, { marginTop: 8 }]} value={emoji} onChangeText={setEmoji} placeholder="Emoji (optional)" placeholderTextColor={colors.muted} maxLength={4} />
-        <TextInput style={[styles.input, { marginTop: 8 }]} value={role} onChangeText={setRole} placeholder="What is it good at? e.g. You plan meals and shopping lists." placeholderTextColor={colors.muted} multiline />
-        <Pressable
-          style={[shared.btn, shared.btnPrimary, { marginTop: 10 }, !name.trim() && { opacity: 0.4 }]}
-          disabled={!name.trim()}
-          onPress={() => {
-            if (addAgent({ name, emoji, role })) {
-              setName('');
-              setEmoji('');
-              setRole('');
-            }
-          }}
-        >
-          <Text style={[shared.btnText, shared.btnTextPrimary]}>Add</Text>
-        </Pressable>
-      </View>
-
       <Text style={styles.label}>Notebook ({notes.length})</Text>
-      {notes.length === 0 ? <Text style={styles.meta}>Notes your agents save show up here.</Text> : null}
+      {notes.length === 0 ? <Text style={styles.meta}>Notes Pocket saves for you show up here.</Text> : null}
       {notes.slice().reverse().map((n) => (
         <View key={n.id} style={styles.card}>
           <Text style={styles.resultText} selectable>{n.text}</Text>
@@ -448,31 +326,24 @@ function TeamTab() {
 
 export function AgentsSheet() {
   const visible = useApp((s) => s.sheet === 'agents');
-  const running = useAgents((s) => s.tasks.filter((t) => t.status === 'running' || t.status === 'queued').length);
-  const waiting = useAgents((s) => s.tasks.filter((t) => t.status === 'waiting').length);
-  const [tab, setTab] = useState<'tasks' | 'team' | 'connect'>('tasks');
+  const [tab, setTab] = useState<'options' | 'connect'>('options');
 
   return (
-    <Sheet visible={visible} title="Agents" onClose={() => openSheet('none')}>
+    <Sheet visible={visible} title="Agent settings" onClose={() => openSheet('none')}>
       <View style={styles.tabs}>
-        <Pressable style={[styles.tab, tab === 'tasks' && styles.tabOn]} onPress={() => setTab('tasks')}>
-          <Text style={[styles.tabText, tab === 'tasks' && { color: colors.accent }]}>
-            Tasks{running ? ` · ${running} active` : ''}{waiting ? ` · ${waiting} need you` : ''}
-          </Text>
-        </Pressable>
-        <Pressable style={[styles.tab, tab === 'team' && styles.tabOn]} onPress={() => setTab('team')}>
-          <Text style={[styles.tabText, tab === 'team' && { color: colors.accent }]}>Team</Text>
+        <Pressable style={[styles.tab, tab === 'options' && styles.tabOn]} onPress={() => setTab('options')}>
+          <Text style={[styles.tabText, tab === 'options' && { color: colors.accent }]}>Options & notes</Text>
         </Pressable>
         <Pressable style={[styles.tab, tab === 'connect' && styles.tabOn]} onPress={() => setTab('connect')}>
           <Text style={[styles.tabText, tab === 'connect' && { color: colors.accent }]}>Connections</Text>
         </Pressable>
       </View>
-      {visible ? tab === 'tasks' ? <TasksTab /> : tab === 'team' ? <TeamTab /> : <ConnectionsTab /> : null}
+      {visible ? tab === 'options' ? <OptionsTab /> : <ConnectionsTab /> : null}
     </Sheet>
   );
 }
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   scroll: { padding: 14, paddingBottom: 50 },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },

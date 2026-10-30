@@ -13,6 +13,7 @@ const SOURCES = {
   chip: require('../../assets/icons/chip.png'),
   download: require('../../assets/icons/download.png'),
   gallery: require('../../assets/icons/gallery.png'),
+  history: require('../../assets/icons/history.png'),
   models: require('../../assets/icons/models.png'),
   offline: require('../../assets/icons/offline.png'),
   omni: require('../../assets/icons/omni.png'),

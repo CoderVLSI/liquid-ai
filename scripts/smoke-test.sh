@@ -88,15 +88,25 @@ tap_desc "Debug" home; sleep 4; dump_ui debug
 if ui_has "Logs" debug && ui_has "Crashes" debug; then ok "Debug sheet opens"; else fail "Debug sheet did not open"; fi
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
-tap_desc "Agents" home; sleep 3; dump_ui agents
-if ui_has "Start task" agents && ui_has "Atlas" agents; then ok "Agents sheet opens with the built-in team"; else fail "Agents sheet did not open"; fi
-# create a task with no model downloaded: it must fail gracefully, and starting the foreground service must not crash the app
-adb shell input tap 540 520; sleep 1; adb shell input text "what is 2 plus 2"; sleep 1
-dump_ui agents2
-tap_desc "Start task" agents2; sleep 6; dump_ui agents3
-if ui_has "No model is downloaded" agents3 || ui_has "Failed" agents3; then ok "task without a model fails gracefully"; else echo "(task result not detected)"; fi
-if alive; then ok "app alive after starting an agent task (foreground service)"; else fail "app died when starting an agent task"; show_crash; fi
+# the separate Agents button is gone; Agent is a mode toggle next to Chat
+if ui_has 'content-desc="Agents"' home; then fail "the old Agents button is still there"; else ok "no separate Agents button"; fi
+tap_desc "Agent mode" home; sleep 3; dump_ui agent
+if ui_has "Give Pocket a task" agent && ui_has "Tools & connections" agent; then ok "Agent mode shows Pocket, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
+if ui_has "Pocket is" agent; then ok "mascot rendered"; else echo "(mascot label not detected)"; fi
+
+tap_desc "Agent settings" agent; sleep 3; dump_ui agentsettings
+if ui_has "Agent settings" agentsettings && ui_has "Connections" agentsettings; then ok "Agent settings sheet opens (options + connections)"; else fail "Agent settings did not open"; fi
 adb shell input keyevent KEYCODE_BACK; sleep 2
+
+# give Pocket a task with no model downloaded: it must fail gracefully; starting the foreground service must not crash the app
+dump_ui agent2
+tap_desc "Give Pocket a task" agent2; sleep 1; adb shell input text "what%sis%s2%splus%s2"; sleep 1
+dump_ui agent3
+tap_desc "Send task" agent3; sleep 8; dump_ui agent4
+if ui_has "No model is downloaded" agent4 || ui_has "Failed" agent4; then ok "task without a model fails gracefully"; else echo "(task result not detected)"; fi
+if alive; then ok "app alive after giving Pocket a task (foreground service)"; else fail "app died when starting an agent task"; show_crash; fi
+
+tap_desc "Chat mode" agent4; sleep 2; dump_ui home
 
 tap_desc "Start live voice" home; sleep 3; dump_ui mic
 if ui_has "Download a model first" mic || ui_has "Models" mic; then ok "mic with no model downloaded explains what to do"; else fail "mic tap with no model gave no feedback"; fi

@@ -7,11 +7,14 @@ import { Icon } from './Icon';
 import { MessageBubble } from './MessageBubble';
 import { Composer } from './Composer';
 import { LivePanel } from './LivePanel';
+import { ModeToggle } from './ModeToggle';
+import { AgentScreen } from './AgentScreen';
 import { dismissCrashes, newChat, openSheet, restartServer } from '../app/controller';
 import { getModel } from '../models/catalog';
 import type { ChatMsg } from '../state/app';
 
 function Header() {
+  const mode = useApp((s) => s.mode);
   const active = useApp((s) => s.settings.activeModel);
   const server = useServer();
   const dot = server.state === 'ready' ? colors.good : server.state === 'starting' ? colors.warn : server.state === 'error' ? colors.danger : colors.muted;
@@ -25,12 +28,11 @@ function Header() {
         <Text style={styles.caret}>▾</Text>
       </Pressable>
       <View style={styles.headerBtns}>
-        <Pressable style={styles.hBtn} onPress={() => openSheet('agents')} accessibilityLabel="Agents">
-          <Icon name="omni" size={24} />
-        </Pressable>
-        <Pressable style={styles.hBtn} onPress={newChat} accessibilityLabel="New chat">
-          <Icon name="plus" size={24} />
-        </Pressable>
+        {mode === 'chat' ? (
+          <Pressable style={styles.hBtn} onPress={newChat} accessibilityLabel="New chat">
+            <Icon name="plus" size={24} />
+          </Pressable>
+        ) : null}
         <Pressable style={styles.hBtn} onPress={() => openSheet('settings')} accessibilityLabel="Settings">
           <Icon name="settings" size={24} />
         </Pressable>
@@ -110,6 +112,7 @@ export function ChatScreen() {
   const messages = useApp((s) => s.messages);
   const voiceActive = useApp((s) => s.voice.active);
   const toast = useApp((s) => s.toast);
+  const mode = useApp((s) => s.mode);
   const list = useRef<FlatList<ChatMsg>>(null);
 
   const last = messages[messages.length - 1];
@@ -121,23 +124,30 @@ export function ChatScreen() {
   return (
     <KeyboardAvoidingView style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Header />
+      <ModeToggle />
       <Banners />
-      <FlatList
-        ref={list}
-        style={{ flex: 1 }}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => <MessageBubble msg={item} />}
-        ListEmptyComponent={<Empty />}
-        contentContainerStyle={messages.length ? { paddingVertical: 8 } : { flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      />
+      {mode === 'agent' ? (
+        <AgentScreen />
+      ) : (
+        <>
+          <FlatList
+            ref={list}
+            style={{ flex: 1 }}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={({ item }) => <MessageBubble msg={item} />}
+            ListEmptyComponent={<Empty />}
+            contentContainerStyle={messages.length ? { paddingVertical: 8 } : { flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+          />
+          {voiceActive ? <LivePanel /> : <Composer />}
+        </>
+      )}
       {toast ? (
         <View style={styles.toast} pointerEvents="none">
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       ) : null}
-      {voiceActive ? <LivePanel /> : <Composer />}
     </KeyboardAvoidingView>
   );
 }

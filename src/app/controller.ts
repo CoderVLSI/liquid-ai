@@ -6,7 +6,7 @@ import { native, nativeAvailable } from '../native';
 import { log, stringify } from '../lib/log';
 import { installCrashHandlers } from '../lib/crash';
 import { appStore } from '../state/app';
-import type { Attachment, ChatMsg, Sheet } from '../state/app';
+import type { Attachment, ChatMsg, Mode, Sheet } from '../state/app';
 import { DEFAULT_SETTINGS, mergeSettings } from '../state/settings';
 import type { Settings } from '../state/settings';
 import { DEFAULT_ORDER, getModel, has, pickDefaultModel } from '../models/catalog';
@@ -119,6 +119,12 @@ export function toast(msg: string, ms = 3500) {
   appStore.set({ toast: msg });
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => appStore.set({ toast: null }), ms);
+}
+
+export function setMode(mode: Mode) {
+  if (appStore.get().mode === mode) return;
+  if (mode === 'agent' && voice) void stopVoice(); // a live voice session belongs to Chat
+  appStore.set({ mode });
 }
 
 export function openSheet(sheet: Sheet) {

@@ -22,7 +22,8 @@ test('tasks that were running when the app died are queued again', () => {
 test('built-in teammates are always present, custom ones are kept', () => {
   const custom = { id: 'c1', name: 'Chef', emoji: '🍳', role: 'Cooks.' };
   const back = deserialize(JSON.stringify({ agents: [custom], tasks: [], notes: [] }));
-  assert.deepEqual(back.agents.map((a) => a.name), ['Atlas', 'Scout', 'Scribe', 'Chef']);
+  assert.deepEqual(back.agents.map((a) => a.name), ['Pocket', 'Scout', 'Scribe', 'Chef']);
+  assert.deepEqual(back.agents.filter((a) => a.hidden).map((a) => a.name), ['Scout', 'Scribe']);
 });
 
 test('corrupt or missing files fall back to a clean state', () => {

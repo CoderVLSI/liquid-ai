@@ -19,6 +19,8 @@ export interface ChatMsg {
   t: number;
 }
 
+export type Mode = 'chat' | 'agent';
+
 export type Sheet = 'none' | 'models' | 'debug' | 'settings' | 'agents';
 
 export interface Attachment {
@@ -28,6 +30,7 @@ export interface Attachment {
 
 export interface AppState {
   booted: boolean;
+  mode: Mode;
   settings: Settings;
   messages: ChatMsg[];
   generating: boolean;
@@ -42,6 +45,7 @@ export interface AppState {
 
 export const appStore = createStore<AppState>({
   booted: false,
+  mode: 'chat',
   settings: DEFAULT_SETTINGS,
   messages: [],
   generating: false,

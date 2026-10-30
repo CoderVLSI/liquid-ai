@@ -59,18 +59,18 @@ Voice needs the **Omni** or **Audio** model. Images need **Omni** or **VL**. The
 
 Downloads pause/resume (and survive app restarts); sizes are verified exactly.
 
-## Agents (a Grok-Bot-style teammate, on your phone)
+## Agent mode (Pocket)
 
-Tap the **network icon** in the header. Give a teammate a task and it works on it in the background, using tools, and comes back with a result or a question.
+Flip the toggle at the top from **Chat** to **Agent**. You talk to one agent, **Pocket**, a small mascot that shows what it is doing (floating when idle, pulsing while it works, hopping when it needs your decision, asleep when no model is loaded). Give it a task in the box at the bottom; it works in the background and answers in the feed. Scout (research) and Scribe (notes) are hidden helpers Pocket hands work to, in parallel.
 
-- **Teammates:** Atlas (coordinator), Scout (researcher), Scribe (notes) and any you add. Atlas can **delegate** sub-tasks to the others and wait for their results (up to 2 levels deep).
-- **Tools:** calculator (exact, no `eval`), date/time, notebook (save/search/delete), reminders (real Android notifications, even if the app is closed), web search and "read this page" (can be switched off for fully offline use).
-- **Asks you when it must:** a task can pause with a question, shows a "needs you" notification, and continues after you answer.
-- **Scheduled and recurring:** start later, or repeat hourly / daily.
-- **Survives restarts:** every step is saved; interrupted tasks resume. While tasks are active a foreground-service notification keeps Android from killing the app and the model.
-- **See what it did:** every task has a step-by-step timeline (tool calls, results, hand-offs).
+- **Tools:** exact calculator, date/time, notebook, reminders (real Android notifications, even if the app is closed), web search and "read this page" (switchable off for fully offline use).
+- **Connections** (Agent → *Tools & connections*): Slack (bot token) and Google Calendar / Gmail / Drive (OAuth with your own free Google Cloud client; the release notes list the signing SHA-1 to register). Anything that posts, sends or creates asks you to **Approve / Deny** first.
+- **Asks you when it must**, notifies you on the phone, and continues after you answer.
+- **Scheduled and recurring:** the clock button next to the box starts a task later or repeats it hourly / daily.
+- **Background:** progress is saved; while tasks or downloads are active a foreground-service notification keeps Android from killing the app and the model.
+- **See what it did:** every task has a step-by-step timeline.
 
-It uses the loaded LFM3 model's tool calling; the 1.7B text model is the natural choice. It does not control other apps (that needs an Android Accessibility Service, a bigger and riskier feature) and it is a small on-device model: expect simple, short tasks to work well and long multi-step research to be hit-and-miss and slow. Agents pause while a live voice conversation or chat reply is running.
+It uses the loaded LFM3 model's tool calling (the 1.7B text model is the natural choice). It does not control other apps (that would need an Android Accessibility Service) and it is a small on-device model: short tasks work well, long multi-step research is slow and hit-and-miss. Agent tasks pause while a live voice conversation or chat reply runs.
 
 ## Debugging crashes
 

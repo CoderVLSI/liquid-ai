@@ -10,24 +10,26 @@ export interface SavedAgents {
 export const DEFAULT_AGENTS: Agent[] = [
   {
     id: 'atlas',
-    name: 'Atlas',
-    emoji: '🧭',
-    role: 'You are the generalist and coordinator: plan the work, do simple parts yourself and hand research or note-keeping to teammates when it helps.',
+    name: 'Pocket',
+    emoji: '✨',
+    role: 'You are the user\'s personal agent, a friendly assistant mascot. Plan the work, do simple parts yourself, and hand research or note-keeping to your helpers when it speeds things up.',
     builtin: true,
   },
   {
     id: 'scout',
     name: 'Scout',
     emoji: '🔎',
-    role: 'You are the researcher: search the web, read pages and report concise, sourced findings.',
+    role: 'You are a research helper: search the web, read pages and report concise, sourced findings.',
     builtin: true,
+    hidden: true,
   },
   {
     id: 'scribe',
     name: 'Scribe',
     emoji: '🗒️',
-    role: 'You keep the notebook: save, find and organise notes and set reminders, and you write clean summaries.',
+    role: 'You are a note-keeping helper: save, find and organise notes, set reminders and write clean summaries.',
     builtin: true,
+    hidden: true,
   },
 ];
 
