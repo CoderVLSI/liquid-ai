@@ -117,15 +117,34 @@ dump_ui home
 if alive; then ok "app process is running after launch"; else fail "app process is NOT running after launch"; fi
 C=$(crashed); if [ -n "$C" ]; then fail "crash signatures in logcat:"; echo "$C"; fi
 
-echo "== first screen"
+echo "== first screen: the first-run setup wizard"
 if ui_has "Native module missing" home; then fail "native module (LiquidNative) was not found at runtime"; fi
-if ui_has "Choose models" home || ui_has "Ask anything" home; then ok "welcome screen rendered"; else fail "welcome screen not visible"; fi
+if ui_has "Meet your buddy" home; then ok "first-run setup opens on a fresh install"; else fail "setup wizard not shown on first launch"; show_ui home; fi
 echo "-- visible text:"; grep -o 'text="[^"]\+"' "$OUT/home.xml" | sort -u | head -20
 
 echo "== what the app logged on boot"
 grep "LiquidVoice" "$OUT/logcat.txt" | grep -E "\[boot\]" | head -10
 if grep -q "server binary present=true" "$OUT/logcat.txt"; then ok "llama server binary is inside the APK and extracted"; else fail "server binary missing from the installed app"; fi
 if grep -q "LiquidNative module created" "$OUT/logcat.txt"; then ok "native module loaded"; else fail "native module did not initialise"; fi
+
+echo "== walk through the setup wizard"
+tap_desc "Buddy Bloop" home; sleep 2; dump_ui s_buddy
+if ui_has 'text="Bloop"' s_buddy; then ok "picking a buddy fills in its name"; else fail "buddy name was not filled in"; show_ui s_buddy; fi
+setup_step() { # setup_step <title it should reach>
+  tap_desc "Next" cur; sleep 2; dump_ui cur
+  if ui_has "$1" cur; then ok "setup step: $1"; else fail "setup did not reach: $1"; show_ui cur; fi
+}
+dump_ui cur
+setup_step "About you"
+setup_step "Your time zone"
+tap_desc "Time zone India" cur; sleep 1
+setup_step "Get a brain"
+setup_step "What may it use"
+setup_step "Connect more"
+setup_step "Quick tour"
+tap_desc "Start" cur; sleep 4; dump_ui home
+if ui_has "Choose models" home || ui_has "Ask anything" home; then ok "main screen after setup"; else fail "main screen not visible after setup"; show_ui home; fi
+if alive; then ok "app alive after setup"; else fail "app died during setup"; show_crash; fi
 
 echo "== tap through screens"
 tap_desc "Choose model" home; sleep 3; dump_ui models
@@ -134,7 +153,10 @@ close_sheet
 
 tap_desc "Settings" home; sleep 3; dump_ui settings
 if ui_has "Live voice" settings || ui_has "Interrupt by speaking" settings; then ok "Settings sheet opens"; else fail "Settings sheet did not open"; fi
-close_sheet
+if ui_has "Phone voice" settings; then ok "phone voice option is there"; else echo "(phone voice option not detected)"; fi
+tap_desc "Profile and setup" settings; sleep 3; dump_ui rerun
+if ui_has "Meet your buddy" rerun; then ok "setup can be reopened from Settings"; else fail "Profile & setup did not reopen the wizard"; show_ui rerun; fi
+tap_desc "Close setup" rerun; sleep 3; dump_ui home
 
 tap_desc "Debug" home; sleep 4; dump_ui debug
 if ui_has "Logs" debug && ui_has "Crashes" debug; then ok "Debug sheet opens"; else fail "Debug sheet did not open"; fi
@@ -145,14 +167,14 @@ if ui_has 'content-desc="Agents"' home; then fail "the old Agents button is stil
 tap_desc "Agent mode" home; sleep 5; dump_ui agent
 echo "--- after the first tap:"; show_ui agent
 adb logcat -d -v time | grep "LiquidVoice" | grep "\[ui\]" | tail -8 | cut -c1-200
-if ! ui_has "Give Pocket a task" agent; then
+if ! ui_has "Give Bloop a task" agent; then
   echo "(mode did not switch; tapping the Agent toggle once more)"; tap_desc "Agent mode" home; sleep 5; dump_ui agent
   echo "--- after the second tap:"; show_ui agent
   adb logcat -d -v time | grep "LiquidVoice" | grep "\[ui\]" | tail -8 | cut -c1-200
 fi
 # note: the dump escapes '&', so match on words without it
-if ui_has "Give Pocket a task" agent && ui_has "Agent settings" agent; then ok "Agent mode shows Pocket, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
-if ui_has "Pocket is" agent; then ok "mascot rendered"; else echo "(mascot label not detected)"; fi
+if ui_has "Give Bloop a task" agent && ui_has "Agent settings" agent; then ok "Agent mode shows the buddy, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
+if ui_has "Bloop is" agent; then ok "mascot rendered"; else echo "(mascot label not detected)"; fi
 
 tap_desc "Agent settings" agent; sleep 3; dump_ui agentsettings
 if ui_has "Agent settings" agentsettings && ui_has "Connections" agentsettings; then ok "Agent settings sheet opens (options + connections)"; else fail "Agent settings did not open"; fi
@@ -160,7 +182,7 @@ close_sheet
 
 # give Pocket a task with no model downloaded: it must fail gracefully; starting the foreground service must not crash the app
 dump_ui agent2
-tap_desc "Give Pocket a task" agent2; sleep 1; adb shell input text "what%sis%s2%splus%s2"; sleep 1
+tap_desc "Give Bloop a task" agent2; sleep 1; adb shell input text "what%sis%s2%splus%s2"; sleep 1
 dump_ui agent3
 tap_desc "Send task" agent3; sleep 8; dump_ui agent4
 if ui_has "No model is downloaded" agent4 || ui_has "Failed" agent4; then ok "task without a model fails gracefully"; else echo "(task result not detected)"; fi

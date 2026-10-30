@@ -136,6 +136,9 @@ jobs:
       - name: Install JS dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Pick up buddies (assets/buddies/*)
+        run: npm run buddies
+
       - name: Unit tests + type check
         run: |
           npm test
@@ -228,6 +231,9 @@ jobs:
           java-version: 17
 
       - run: npm ci --no-audit --no-fund
+
+      - name: Pick up buddies (assets/buddies/*)
+        run: npm run buddies
 
       - name: Add the x86_64 server binary
         uses: actions/download-artifact@v4

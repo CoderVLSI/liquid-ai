@@ -8,6 +8,7 @@ import { agentStore } from '../agents/store';
 import type { AgentState } from '../agents/store';
 import { connStore } from '../connections/store';
 import type { ConnState } from '../connections/store';
+import { mcpStore } from '../mcp/manager';
 import { log } from '../lib/log';
 import type { LogEntry } from '../lib/log';
 
@@ -21,6 +22,10 @@ export function useAgents<S>(selector: (s: AgentState) => S): S {
 
 export function useConnections<S>(selector: (s: ConnState) => S): S {
   return useSyncExternalStore(connStore.subscribe, () => selector(connStore.get()));
+}
+
+export function useMcp() {
+  return useSyncExternalStore(mcpStore.subscribe, () => mcpStore.get().status);
 }
 
 export function useDownloads() {

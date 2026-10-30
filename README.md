@@ -61,6 +61,18 @@ Voice needs the **Omni** or **Audio** model. Images need **Omni** or **VL**. The
 
 Downloads pause/resume (and survive app restarts); sizes are verified exactly.
 
+## First-run setup
+
+A fresh install opens a 7-step wizard (skippable; reopen it any time from Settings → *Profile & setup*): **buddy** (pick a mascot, name it), **about you** (your name, what you want help with, how it should talk), **time zone** (really honoured: "tomorrow 9am" and reminders use that clock, also for Google Calendar), **brain** (one-tap download of the recommended model), **tools** (internet, approvals, Slack/Google), **connect more** (MCP servers and your own computer or VM), and a **quick tour** of the screens. What you enter becomes part of the chat, voice and agent prompts (`src/state/profile.ts`).
+
+### MCP servers and your own computer
+
+Any remote **MCP server** (streamable HTTP; `src/mcp/`) can be added: its tools show up for the agent, with a *test connection* before saving and an *ask before its tools run* switch. For your **own PC or VM**, run `tools/pc-bridge/pc_bridge.py` there (one file, no dependencies, it is itself an MCP server): it prints a URL and a token to paste in the app. It is read-only by default, token-protected, limited to one folder, and every command/file change is approved on the phone. See `tools/pc-bridge/README.md` (use Tailscale or an SSH tunnel instead of opening it to the internet).
+
+### Buddies (mascots)
+
+`assets/buddies/<id>/` holds 8 expression PNGs per character (idle, blink, talk, happy, think, wait, sleep, sad); CI turns the folders into the picker (`npm run buddies`). The app animates them (blink, mouth flap while speaking, thinking/waiting poses, breathing, hopping, tap-to-play). `docs/BUDDIES.md` has the ChatGPT prompts and `scripts/slice-sheet.py` turns a sheet into aligned transparent sprites. Bloop is a drawn placeholder.
+
 ## Agent mode (Pocket)
 
 Flip the toggle at the top from **Chat** to **Agent**. You talk to one agent, **Pocket**, a small mascot that shows what it is doing (floating when idle, pulsing while it works, hopping when it needs your decision, asleep when no model is loaded). Give it a task in the box at the bottom; it works in the background and answers in the feed. Scout (research) and Scribe (notes) are hidden helpers Pocket hands work to, in parallel.

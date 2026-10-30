@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
 import { Press } from './Press';
 import { Mascot } from './Mascot';
-import { motion } from './motion';
+import { useReduceMotion } from './useReduceMotion';
 import { getBuddy } from '../buddies/registry';
 import { choosePose } from '../buddies/mood';
 import type { Mood, Pose } from '../buddies/mood';
@@ -32,6 +32,7 @@ export function BuddyView({ buddyId, mood, size = 140, tappable = true }: { budd
 
 function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: string; mood: Mood; size: number; tappable: boolean }) {
   const buddy = getBuddy(buddyId);
+  const reduce = useReduceMotion();
   const [blink, setBlink] = useState(false);
   const [mouth, setMouth] = useState(false);
   const [burst, setBurst] = useState(false);
@@ -49,7 +50,7 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
 
   // breathing + gentle bob, always (unless animations are off)
   useEffect(() => {
-    if (motion.reduce) return undefined;
+    if (reduce) return undefined;
     const slow = mood === 'asleep';
     const a = loop(breathe, 1, slow ? 1800 : 1100);
     const b = loop(bob, 1, slow ? 2200 : 1500);
@@ -59,14 +60,14 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
       a.stop();
       b.stop();
     };
-  }, [breathe, bob, mood]);
+  }, [breathe, bob, mood, reduce]);
 
   // mood motion: wobble while working, hop while it needs you, floating z while asleep
   useEffect(() => {
     wobble.setValue(0);
     hop.setValue(0);
     zzz.setValue(0);
-    if (motion.reduce) return undefined;
+    if (reduce) return undefined;
     let a: Animated.CompositeAnimation | null = null;
     if (mood === 'working') a = loop(wobble, 1, 420);
     else if (mood === 'waiting') {
@@ -82,11 +83,11 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
     }
     a?.start();
     return () => a?.stop();
-  }, [mood, wobble, hop, zzz]);
+  }, [mood, wobble, hop, zzz, reduce]);
 
   // blinking: every few seconds, 120 ms
   useEffect(() => {
-    if (motion.reduce || mood === 'asleep' || mood === 'working' || mood === 'happy' || mood === 'sad') return undefined;
+    if (reduce || mood === 'asleep' || mood === 'working' || mood === 'happy' || mood === 'sad') return undefined;
     let alive = true;
     let t: ReturnType<typeof setTimeout>;
     const schedule = () => {
@@ -106,7 +107,7 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
       clearTimeout(t);
       setBlink(false);
     };
-  }, [mood]);
+  }, [mood, reduce]);
 
   // talking: the mouth opens and closes at an uneven, speech-like rhythm
   useEffect(() => {
@@ -136,11 +137,11 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
     tap('light');
     squash.setValue(0);
     Animated.sequence([
-      Animated.timing(squash, { toValue: -0.5, duration: motion.reduce ? 0 : 110, useNativeDriver: true }),
-      Animated.timing(squash, { toValue: 1, duration: motion.reduce ? 0 : 210, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(squash, { toValue: 0, duration: motion.reduce ? 0 : 320, easing: Easing.bounce, useNativeDriver: true }),
+      Animated.timing(squash, { toValue: -0.5, duration: reduce ? 0 : 110, useNativeDriver: true }),
+      Animated.timing(squash, { toValue: 1, duration: reduce ? 0 : 210, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(squash, { toValue: 0, duration: reduce ? 0 : 320, easing: Easing.bounce, useNativeDriver: true }),
     ]).start(() => setTimeout(() => setBurst(false), 500));
-  }, [burst, squash]);
+  }, [burst, squash, reduce]);
 
   const translateY = Animated.add(
     Animated.add(
@@ -170,7 +171,7 @@ function SpriteBuddy({ buddyId, mood: moodProp, size, tappable }: { buddyId: str
           <Image key={p} source={src} style={[styles.img, { opacity: p === pose ? 1 : 0 }]} resizeMode="contain" fadeDuration={0} />
         ))}
       </Animated.View>
-      {mood === 'asleep' && !motion.reduce ? (
+      {mood === 'asleep' && !reduce ? (
         <Animated.Text
           style={[
             styles.zzz,

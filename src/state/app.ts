@@ -41,6 +41,8 @@ export interface AppState {
   crashes: CrashReport[];
   exitReasons: ExitReason[];
   nativeMissing: boolean;
+  /** the setup wizard is open (it also opens by itself until it was finished once) */
+  setupOpen: boolean;
 }
 
 export const appStore = createStore<AppState>({
@@ -56,4 +58,5 @@ export const appStore = createStore<AppState>({
   crashes: [],
   exitReasons: [],
   nativeMissing: false,
+  setupOpen: false,
 });

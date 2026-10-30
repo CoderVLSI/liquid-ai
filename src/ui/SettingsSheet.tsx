@@ -4,7 +4,7 @@ import { Press as Pressable } from './Press';
 import { Sheet } from './Sheet';
 import { useApp } from './hooks';
 import { colors, shared } from './theme';
-import { openSheet, restartServer, setSettings } from '../app/controller';
+import { openSetup, openSheet, restartServer, setSettings } from '../app/controller';
 import { native } from '../native';
 import type { Settings } from '../state/settings';
 
@@ -52,6 +52,13 @@ export function SettingsSheet() {
   return (
     <Sheet visible={visible} title="Settings" onClose={() => openSheet('none')}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        <Text style={styles.section}>Profile</Text>
+        <Row title={s.agentName ? `${s.agentName}${s.userName ? ` · for ${s.userName}` : ''}` : 'Your buddy'} hint={`Time zone: ${s.timezone === 'auto' ? 'automatic' : s.timezone}. Buddy, names, tools, MCP servers and your computer.`}>
+          <Pressable style={[shared.btn, shared.btnPrimary]} onPress={openSetup} accessibilityLabel="Profile and setup">
+            <Text style={[shared.btnText, shared.btnTextPrimary]}>Profile & setup</Text>
+          </Pressable>
+        </Row>
+
         <Text style={styles.section}>Live voice</Text>
         <Text style={styles.label}>Who speaks the reply</Text>
         <View style={styles.choices}>

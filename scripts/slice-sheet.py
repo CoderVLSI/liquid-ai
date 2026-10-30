@@ -3,6 +3,7 @@
 Turns a character sheet (a grid of poses, e.g. made with ChatGPT) into the buddy folder the app reads.
 
   python3 scripts/slice-sheet.py sheet.png --id axo --name Axo --tagline "A sleepy axolotl" --color "#ff8fb1"
+  python3 scripts/slice-sheet.py my_poses_folder/ --id axo ...     (a folder with idle.png, blink.png ... one image per pose)
 
   --cols 4 --rows 2          grid of the sheet (default 4 x 2)
   --poses idle,blink,...     what each cell is, left to right, top to bottom
@@ -91,6 +92,20 @@ def cut_background(cell, bg, tol, erase_shadow=False):
     return out
 
 
+def prepare(cell, pose, a, index):
+    """Background removal + tight crop for one pose image."""
+    if is_transparent(cell):
+        out = cell
+    else:
+        bg = corner_color(cell) if a.bg == "auto" else parse_color(a.bg)
+        out = cut_background(cell, bg, a.tolerance, a.erase_shadow)
+    box = out.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
+    if not box:
+        where = "cell %d (%s)" % (index + 1, pose) if index is not None else pose
+        sys.exit("%s is empty: check --cols/--rows or --tolerance" % where)
+    return out.crop(box)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sheet")
@@ -113,22 +128,23 @@ def main():
     if len(poses) != a.cols * a.rows:
         sys.exit("%d poses given but the grid has %d cells" % (len(poses), a.cols * a.rows))
 
-    sheet = Image.open(a.sheet).convert("RGBA")
-    W, H = sheet.size
-    cw, ch = W // a.cols, H // a.rows
-    transparent = is_transparent(sheet)
-    bg = None if transparent else (corner_color(sheet) if a.bg == "auto" else parse_color(a.bg))
-    print("sheet %dx%d, cells %dx%d, background: %s" % (W, H, cw, ch, "already transparent" if transparent else "#%02x%02x%02x" % bg))
-
     cut = {}
-    for i, pose in enumerate(poses):
-        x, y = (i % a.cols) * cw, (i // a.cols) * ch
-        cell = sheet.crop((x + a.inset, y + a.inset, x + cw - a.inset, y + ch - a.inset))
-        cell = cell if transparent else cut_background(cell, bg, a.tolerance, a.erase_shadow)
-        box = cell.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
-        if not box:
-            sys.exit("cell %d (%s) is empty: check --cols/--rows or --tolerance" % (i + 1, pose))
-        cut[pose] = cell.crop(box)
+    if os.path.isdir(a.sheet):
+        # one image per pose, named after the pose (idle.png, blink.jpg, ...)
+        for pose in poses:
+            path = next((os.path.join(a.sheet, pose + e) for e in (".png", ".webp", ".jpg", ".jpeg") if os.path.exists(os.path.join(a.sheet, pose + e))), None)
+            if not path:
+                sys.exit("missing %s.png (or .webp/.jpg) in %s" % (pose, a.sheet))
+            cut[pose] = prepare(Image.open(path).convert("RGBA"), pose, a, None)
+    else:
+        sheet = Image.open(a.sheet).convert("RGBA")
+        W, H = sheet.size
+        cw, ch = W // a.cols, H // a.rows
+        print("sheet %dx%d, cells %dx%d" % (W, H, cw, ch))
+        for i, pose in enumerate(poses):
+            x, y = (i % a.cols) * cw, (i // a.cols) * ch
+            cell = sheet.crop((x + a.inset, y + a.inset, x + cw - a.inset, y + ch - a.inset))
+            cut[pose] = prepare(cell, pose, a, i)
 
     # one scale for every pose, so the character keeps its size from pose to pose
     inner = int(a.size * 0.92)

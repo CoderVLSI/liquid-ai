@@ -3,6 +3,7 @@ import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './src/ui/ErrorBoundary';
 import { ChatScreen } from './src/ui/ChatScreen';
+import { Onboarding } from './src/ui/Onboarding';
 import { ModelsSheet } from './src/ui/ModelsSheet';
 import { DebugSheet } from './src/ui/DebugSheet';
 import { SettingsSheet } from './src/ui/SettingsSheet';
@@ -15,6 +16,8 @@ import { log, stringify } from './src/lib/log';
 function Root() {
   const booted = useApp((s) => s.booted);
   const nativeMissing = useApp((s) => s.nativeMissing);
+  const onboarded = useApp((s) => s.settings.onboarded);
+  const setupOpen = useApp((s) => s.setupOpen);
 
   useEffect(() => {
     boot().catch((e) => log.error('boot', 'boot failed', stringify(e)));
@@ -37,7 +40,7 @@ function Root() {
   }
   return (
     <>
-      <ChatScreen />
+      {!onboarded || setupOpen ? <Onboarding /> : <ChatScreen />}
       <ModelsSheet />
       <SettingsSheet />
       <AgentsSheet />

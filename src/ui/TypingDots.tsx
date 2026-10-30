@@ -1,14 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { colors } from './theme';
-import { motion } from './motion';
+import { useReduceMotion } from './useReduceMotion';
 
 /** Three bouncing dots: shown while the model has not produced its first word yet. */
 export function TypingDots() {
   const dots = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
+  const reduce = useReduceMotion();
 
   useEffect(() => {
-    if (motion.reduce) return undefined;
+    if (reduce) return undefined;
     const loops = dots.map((d, i) =>
       Animated.loop(
         Animated.sequence([
@@ -21,7 +22,7 @@ export function TypingDots() {
     );
     loops.forEach((l) => l.start());
     return () => loops.forEach((l) => l.stop());
-  }, [dots]);
+  }, [dots, reduce]);
 
   return (
     <View style={styles.row} accessibilityLabel="Thinking">

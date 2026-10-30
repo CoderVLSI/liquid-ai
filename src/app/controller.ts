@@ -22,7 +22,7 @@ import { tap } from '../lib/haptics';
 import { VoiceSession } from '../voice/VoiceSession';
 import type { AudioPort } from '../voice/VoiceSession';
 import { buildRequest } from '../chat/history';
-import { startAgents } from '../agents/runner';
+import { renameMainAgent, startAgents } from '../agents/runner';
 import { startConnections } from '../connections/store';
 
 let filesDir = '';
@@ -125,6 +125,28 @@ export function toast(msg: string, ms = 3500) {
   appStore.set({ toast: msg });
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => appStore.set({ toast: null }), ms);
+}
+
+// ---- first-run setup ---------------------------------------------------------------------------
+
+export function openSetup() {
+  appStore.set({ setupOpen: true, sheet: 'none' });
+}
+
+export function closeSetup() {
+  appStore.set({ setupOpen: false });
+}
+
+/** Saves what the wizard collected, names the main agent, and closes the wizard. */
+export function finishSetup(profile: Partial<Settings>) {
+  const patch: Partial<Settings> = { ...profile, onboarded: true };
+  if (patch.agentName !== undefined && !patch.agentName.trim()) patch.agentName = 'Pocket';
+  setSettings(patch);
+  renameMainAgent(appStore.get().settings.agentName);
+  appStore.set({ setupOpen: false, mode: 'chat' });
+  const who = appStore.get().settings.userName.trim();
+  toast(who ? `Welcome, ${who}!` : 'All set!', 2500);
+  tap('success');
 }
 
 export function setMode(mode: Mode) {
