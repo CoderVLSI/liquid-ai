@@ -13,7 +13,8 @@ import { FadeIn } from './FadeIn';
 import { ms } from './motion';
 import { AgentScreen } from './AgentScreen';
 import { BuddyView } from './BuddyView';
-import { dismissCrashes, newChat, openSheet, restartServer } from '../app/controller';
+import { dismissCrashes, newChat, openSheet, restartServer, sendMessage } from '../app/controller';
+import { suggestFollowUps } from '../chat/followups';
 import { getModel } from '../models/catalog';
 import type { ChatMsg } from '../state/app';
 
@@ -33,9 +34,14 @@ function Header() {
       </Pressable>
       <View style={styles.headerBtns}>
         {mode === 'chat' ? (
-          <Pressable style={styles.hBtn} onPress={newChat} accessibilityLabel="New chat">
-            <Icon name="plus" size={24} />
-          </Pressable>
+          <>
+            <Pressable style={styles.hBtn} onPress={() => openSheet('history')} accessibilityLabel="History">
+              <Icon name="history" size={24} />
+            </Pressable>
+            <Pressable style={styles.hBtn} onPress={newChat} accessibilityLabel="New chat">
+              <Icon name="plus" size={24} />
+            </Pressable>
+          </>
         ) : null}
         <Pressable style={styles.hBtn} onPress={() => openSheet('settings')} accessibilityLabel="Settings">
           <Icon name="settings" size={24} />
@@ -138,6 +144,25 @@ function Toast({ text }: { text: string | null }) {
   );
 }
 
+/** One-tap follow-ups under the latest reply. */
+function FollowUps() {
+  const on = useApp((st) => st.settings.followUps);
+  const last = useApp((st) => st.messages[st.messages.length - 1]);
+  const generating = useApp((st) => st.generating);
+  if (!on || generating || !last || last.role !== 'assistant' || last.error || last.voice || last.streaming) return null;
+  const chips = suggestFollowUps(last.text);
+  if (!chips.length) return null;
+  return (
+    <FadeIn key={last.id} y={6} delay={120} style={styles.followRow}>
+      {chips.map((c) => (
+        <Pressable key={c} style={styles.followChip} onPress={() => void sendMessage(c)} pressScale={0.94} accessibilityLabel={`Follow up: ${c}`}>
+          <Text style={styles.followText}>{c}</Text>
+        </Pressable>
+      ))}
+    </FadeIn>
+  );
+}
+
 export function ChatScreen() {
   const insets = useSafeAreaInsets();
   const messages = useApp((s) => s.messages);
@@ -188,6 +213,7 @@ export function ChatScreen() {
             windowSize={9}
             initialNumToRender={12}
             ListEmptyComponent={<Empty />}
+            ListFooterComponent={<FollowUps />}
             contentContainerStyle={messages.length ? { paddingVertical: 8 } : { flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
           />
@@ -226,6 +252,9 @@ const styles = StyleSheet.create({
   emptyTitle: { color: colors.text, fontSize: 26, fontWeight: '700' },
   emptyName: { color: colors.accent, fontSize: 13, fontWeight: '700', marginTop: 2 },
   emptyText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 10 },
+  followRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 10 },
+  followChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accentDim },
+  followText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
   jumpWrap: { position: 'absolute', right: 16, bottom: 74 },
   jump: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceHi, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   jumpText: { color: colors.accent, fontSize: 20, fontWeight: '700' },

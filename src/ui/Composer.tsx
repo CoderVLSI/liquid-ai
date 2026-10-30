@@ -54,9 +54,12 @@ export function Composer() {
   const [text, setText] = useState('');
   const attachment = useApp((s) => s.attachment);
   const generating = useApp((s) => s.generating);
+  const queued = useApp((s) => s.queued);
 
   const canSend = text.trim().length > 0 || attachment != null;
-  const kind: Kind = generating ? 'stop' : canSend ? 'send' : 'mic';
+  // while a reply streams, typing something turns the button into Send (it queues the message); empty = Stop
+  const typed = text.trim().length > 0;
+  const kind: Kind = generating ? (typed ? 'send' : 'stop') : canSend ? 'send' : 'mic';
 
   const send = () => {
     const t = text;
@@ -82,6 +85,12 @@ export function Composer() {
               <Text style={styles.remove}>✕</Text>
             </Press>
           </View>
+        </FadeIn>
+      ) : null}
+
+      {queued > 0 ? (
+        <FadeIn y={4} duration={140}>
+          <Text style={styles.queued}>{queued} message{queued > 1 ? 's' : ''} queued, sent when the reply is done</Text>
         </FadeIn>
       ) : null}
 
@@ -134,6 +143,7 @@ const styles = StyleSheet.create({
   action: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   face: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   stopSquare: { width: 14, height: 14, borderRadius: 3, backgroundColor: colors.text },
+  queued: { color: colors.muted, fontSize: 12, textAlign: 'center', marginBottom: 6 },
   preview: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, backgroundColor: colors.surface, borderRadius: 14, padding: 8 },
   thumb: { width: 44, height: 44, borderRadius: 8 },
   previewText: { flex: 1, color: colors.muted, fontSize: 13 },

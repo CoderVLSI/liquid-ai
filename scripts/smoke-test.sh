@@ -158,6 +158,10 @@ tap_desc "Profile and setup" settings; sleep 3; dump_ui rerun
 if ui_has "Meet your buddy" rerun; then ok "setup can be reopened from Settings"; else fail "Profile & setup did not reopen the wizard"; show_ui rerun; fi
 tap_desc "Close setup" rerun; sleep 3; dump_ui home
 
+tap_desc "History" home; sleep 3; dump_ui history
+if ui_has "History" history && (ui_has "No past chats" history || ui_has "Open chat" history); then ok "History sheet opens"; else fail "History sheet did not open"; show_ui history; fi
+close_sheet
+
 tap_desc "Debug" home; sleep 4; dump_ui debug
 if ui_has "Logs" debug && ui_has "Crashes" debug; then ok "Debug sheet opens"; else fail "Debug sheet did not open"; fi
 close_sheet

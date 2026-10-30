@@ -5,6 +5,7 @@ import { ErrorBoundary } from './src/ui/ErrorBoundary';
 import { ChatScreen } from './src/ui/ChatScreen';
 import { Onboarding } from './src/ui/Onboarding';
 import { EvolutionOverlay } from './src/ui/EvolutionOverlay';
+import { HistorySheet } from './src/ui/HistorySheet';
 import { ModelsSheet } from './src/ui/ModelsSheet';
 import { DebugSheet } from './src/ui/DebugSheet';
 import { SettingsSheet } from './src/ui/SettingsSheet';
@@ -46,6 +47,7 @@ function Root() {
       <SettingsSheet />
       <AgentsSheet />
       <DebugSheet />
+      <HistorySheet />
       <EvolutionOverlay />
     </>
   );

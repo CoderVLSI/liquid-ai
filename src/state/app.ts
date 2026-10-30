@@ -1,6 +1,7 @@
 import { createStore } from './store';
 import { DEFAULT_SETTINGS } from './settings';
 import type { Settings } from './settings';
+import type { SavedChat } from '../chat/saved';
 import type { VoiceState } from '../voice/VoiceSession';
 import type { CrashReport, ExitReason } from '../native';
 
@@ -21,7 +22,7 @@ export interface ChatMsg {
 
 export type Mode = 'chat' | 'agent';
 
-export type Sheet = 'none' | 'models' | 'debug' | 'settings' | 'agents';
+export type Sheet = 'none' | 'models' | 'debug' | 'settings' | 'agents' | 'history';
 
 export interface Attachment {
   uri: string;
@@ -45,6 +46,10 @@ export interface AppState {
   setupOpen: boolean;
   /** set when the buddy just evolved: the cutscene plays until it is dismissed */
   evolving: { buddyId: string; form: 'stage2' | 'stage3' } | null;
+  /** past conversations (the open one is `messages`) */
+  chats: SavedChat[];
+  /** messages typed while a reply was still being written; they are sent one after another */
+  queued: number;
 }
 
 export const appStore = createStore<AppState>({
@@ -62,4 +67,6 @@ export const appStore = createStore<AppState>({
   nativeMissing: false,
   setupOpen: false,
   evolving: null,
+  chats: [],
+  queued: 0,
 });

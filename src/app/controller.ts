@@ -17,6 +17,8 @@ import { streamChat } from '../net/ChatClient';
 import { RealtimeClient } from '../net/RealtimeClient';
 import * as Clipboard from 'expo-clipboard';
 import { withPersona } from '../state/profile';
+import { archiveChat, parseChats, takeChat } from '../chat/saved';
+import type { SavedChat as SavedChatT } from '../chat/saved';
 import { mcp } from '../mcp/manager';
 import { MEGA_MINUTES, XP, dayKey, evolvedBetween, megaCharges, nextStreak } from '../buddies/evolution';
 import { resolveZone, toWall } from '../lib/tz';
@@ -38,6 +40,7 @@ const newId = () => `${Date.now().toString(36)}-${(uid++).toString(36)}`;
 
 const settingsFile = () => `${filesDir}/settings.json`;
 const chatFile = () => `${filesDir}/chat.json`;
+const chatsFile = () => `${filesDir}/chats.json`;
 
 // ---- boot --------------------------------------------------------------------------------------
 
@@ -74,6 +77,13 @@ export async function boot() {
     log.warn('boot', 'could not read chat', stringify(e));
   }
 
+  let chats: SavedChatT[] = [];
+  try {
+    chats = parseChats(await native.readText(chatsFile()));
+  } catch (e) {
+    log.warn('boot', 'could not read chat history', stringify(e));
+  }
+
   downloads.init();
   const ready = downloads.readyIds();
   if (!settings.activeModel || !ready.includes(settings.activeModel)) {
@@ -84,6 +94,7 @@ export async function boot() {
     booted: true,
     settings,
     messages,
+    chats,
     crashes: native.crashReports(),
     exitReasons: native.exitReasons(),
   });
@@ -240,11 +251,56 @@ function addMsg(m: Omit<ChatMsg, 'id' | 't'>): string {
   return msg.id;
 }
 
+let chatsTimer: ReturnType<typeof setTimeout> | null = null;
+function persistChatsSoon() {
+  if (chatsTimer) return;
+  chatsTimer = setTimeout(() => {
+    chatsTimer = null;
+    try {
+      native.writeText(chatsFile(), JSON.stringify(appStore.get().chats), false);
+    } catch (e) {
+      log.warn('chat', 'history save failed', stringify(e));
+    }
+  }, 600);
+}
+
+/** Moves the open conversation into the history (if anyone said anything) and returns the new list. */
+function archiveCurrent(): SavedChatT[] {
+  const s = appStore.get();
+  const chats = archiveChat(s.chats, s.messages, Date.now(), `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`);
+  appStore.set({ chats });
+  persistChatsSoon();
+  return chats;
+}
+
 export function newChat() {
   stopGenerating();
   if (voice) void stopVoice();
+  archiveCurrent();
   appStore.set({ messages: [], attachment: null });
   persistChatSoon();
+}
+
+/** Opens a past conversation: the one that was open goes into the history in its place. */
+export function openChat(id: string) {
+  const picked = takeChat(appStore.get().chats, id);
+  if (!picked.chat) return;
+  stopGenerating();
+  if (voice) void stopVoice();
+  archiveCurrent();
+  appStore.set((st) => ({ chats: st.chats.filter((c) => c.id !== id), messages: picked.chat!.messages, attachment: null, sheet: 'none', mode: 'chat' }));
+  persistChatSoon();
+  persistChatsSoon();
+}
+
+export function deleteChat(id: string) {
+  appStore.set((st) => ({ chats: st.chats.filter((c) => c.id !== id) }));
+  persistChatsSoon();
+}
+
+export function clearHistory() {
+  appStore.set({ chats: [] });
+  persistChatsSoon();
 }
 
 // ---- models ------------------------------------------------------------------------------------
@@ -364,7 +420,11 @@ export async function regenerate() {
   await sendMessage(u.text);
 }
 
+const sendQueue: string[] = [];
+
 export function stopGenerating() {
+  sendQueue.length = 0; // stopping means stop: queued messages go too
+  appStore.set({ queued: 0 });
   genAbort?.abort();
   genAbort = null;
 }
@@ -373,7 +433,16 @@ export async function sendMessage(rawText: string) {
   const s = appStore.get();
   const text = rawText.trim();
   const attachment = s.attachment;
-  if ((!text && !attachment) || s.generating) return;
+  if (s.generating) {
+    // typed while a reply is still being written: it waits its turn (photos are not queued)
+    if (text && !attachment) {
+      sendQueue.push(text);
+      appStore.set({ queued: sendQueue.length });
+      tap('light');
+    }
+    return;
+  }
+  if (!text && !attachment) return;
 
   const id = modelFor(attachment ? 'vision' : 'text');
   if (!id) return;
@@ -442,6 +511,9 @@ export async function sendMessage(rawText: string) {
     genAbort = null;
     appStore.set({ generating: false });
     native.setWakeLock(false);
+    const next = sendQueue.shift();
+    appStore.set({ queued: sendQueue.length });
+    if (next) setTimeout(() => void sendMessage(next), 80);
   }
 }
 

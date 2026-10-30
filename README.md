@@ -91,6 +91,10 @@ Flip the toggle at the top from **Chat** to **Agent**. You talk to one agent, **
 
 It uses the loaded LFM3 model's tool calling (the 1.7B text model is the natural choice). It does not control other apps (that would need an Android Accessibility Service) and it is a small on-device model: short tasks work well, long multi-step research is slow and hit-and-miss. Agent tasks pause while a live voice conversation or chat reply runs.
 
+## History and follow-ups
+
+**History** (clock icon in Chat): "New chat" no longer throws the conversation away; it moves into the history (newest first, up to 50, saved on the phone), titled from your first message. Tap one to reopen it (the open chat takes its place in the list), ✕ deletes one, *Clear* deletes all. **Follow-ups:** one-tap chips under each reply ("Tell me more", "Explain simply", "Give an example"; none when the reply is a question), switchable in Settings. **Queue:** you can type and send while a reply is still streaming; the messages wait and go out one after another, and Stop clears them. Code: `src/chat/saved.ts`, `src/chat/followups.ts`.
+
 ## Feel
 
 Every button squeezes on touch-down and springs back with a small haptic tick (Settings → Haptic feedback); the Chat | Agent switch is a sliding pill; the send button morphs mic → send → stop; messages fade in; the typing dots show before the first word; the list follows a streaming reply without animating every word and shows a "scroll to latest" button when you scroll up; replies have Copy / Try again; the model starts loading as soon as you tap the message box; the keyboard stays open while a reply streams. All animation durations drop to 0 when Android's "remove animations" is on.

@@ -48,6 +48,8 @@ export interface Settings {
   ttsRate: number;
   /** a small buzz on taps and when a reply arrives */
   haptics: boolean;
+  /** one-tap follow-up chips under each reply */
+  followUps: boolean;
   /** 'text+audio' shows live captions while it speaks (LFM voice only) */
   speechReply: 'text+audio' | 'audio';
   bargeIn: boolean;
@@ -99,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voiceOutput: 'phone',
   ttsRate: 1,
   haptics: true,
+  followUps: true,
   speechReply: 'audio',
   bargeIn: true,
   bargeInOnSpeaker: false,

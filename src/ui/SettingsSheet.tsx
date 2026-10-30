@@ -108,6 +108,9 @@ export function SettingsSheet() {
         <TextInput style={styles.input} value={s.voicePrompt} onChangeText={(t) => set({ voicePrompt: t })} multiline placeholderTextColor={colors.muted} />
 
         <Text style={styles.section}>Chat</Text>
+        <Row title="Suggest follow-ups" hint="One-tap chips under each reply: tell me more, explain simply, give an example">
+          <Switch value={s.followUps} onValueChange={(v) => set({ followUps: v })} />
+        </Row>
         <Row title="Haptic feedback" hint="A tiny buzz on taps and when a reply is ready">
           <Switch value={s.haptics} onValueChange={(v) => set({ haptics: v })} />
         </Row>
