@@ -357,6 +357,11 @@ const audioPort: AudioPort = {
   playerPendingMs: () => native.playerPendingMs(),
   onMicFrame: (cb) => native.on('micFrame', cb),
   onMicError: (cb) => native.on('micError', (e) => cb(e.message)),
+  ttsInit: (rate, callMode) => native.ttsInit(rate, callMode),
+  ttsSpeak: (t) => native.ttsSpeak(t),
+  ttsStop: () => native.ttsStop(),
+  ttsBusy: () => native.ttsBusy(),
+  ttsShutdown: () => native.ttsShutdown(),
 };
 
 export function voiceActive() {

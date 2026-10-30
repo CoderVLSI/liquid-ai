@@ -23,6 +23,7 @@ class LiquidNativeModule : Module() {
   private val player by lazy { PcmPlayer() }
   private val route by lazy { VoiceRoute(context) }
   private val downloader by lazy { Downloader() }
+  private val phoneVoice by lazy { PhoneVoice(context) }
   private var wakeLock: PowerManager.WakeLock? = null
 
   override fun definition() = ModuleDefinition {
@@ -40,6 +41,7 @@ class LiquidNativeModule : Module() {
         server.stop()
         mic.stop()
         player.stop()
+        phoneVoice.shutdown()
         route.leave()
         wakeLock?.let { if (it.isHeld) it.release() }
       } catch (e: Throwable) {
@@ -141,6 +143,28 @@ class LiquidNativeModule : Module() {
 
     Function("playerPendingMs") {
       player.pendingMs()
+    }
+
+    // ---- the phone's own voice (text to speech) -------------------------------------------------
+
+    AsyncFunction("ttsInit") { rate: Double, callMode: Boolean, promise: Promise ->
+      phoneVoice.init(rate.toFloat(), callMode) { result -> promise.resolve(result) }
+    }
+
+    Function("ttsSpeak") { text: String ->
+      phoneVoice.speak(text)
+    }
+
+    Function("ttsStop") {
+      phoneVoice.stop()
+    }
+
+    Function("ttsBusy") {
+      phoneVoice.busy()
+    }
+
+    AsyncFunction("ttsShutdown") {
+      phoneVoice.shutdown()
     }
 
     AsyncFunction("stopPlayer") {

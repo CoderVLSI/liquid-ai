@@ -9,7 +9,17 @@ export interface Settings {
   /** context window of each conversation slot (chat, voice and every parallel agent get one) */
   contextPerSlot: number;
   thinking: boolean;
-  /** 'text+audio' shows live captions while it speaks */
+  /**
+   * Who speaks the reply. 'phone' = the model only writes text and the phone's own speech engine says it (smooth on
+   * any phone, instant). 'lfm' = the model generates the audio itself (natural, but stutters when the phone cannot
+   * generate speech faster than real time).
+   */
+  voiceOutput: 'phone' | 'lfm';
+  /** speed of the phone voice, 1 = normal */
+  ttsRate: number;
+  /** a small buzz on taps and when a reply arrives */
+  haptics: boolean;
+  /** 'text+audio' shows live captions while it speaks (LFM voice only) */
   speechReply: 'text+audio' | 'audio';
   bargeIn: boolean;
   /** allow interrupting while the assistant plays through the loudspeaker (it can hear itself; headphones are safe) */
@@ -43,6 +53,9 @@ export const DEFAULT_SETTINGS: Settings = {
   threads: 0,
   contextPerSlot: 6144,
   thinking: false,
+  voiceOutput: 'phone',
+  ttsRate: 1,
+  haptics: true,
   speechReply: 'audio',
   bargeIn: true,
   bargeInOnSpeaker: false,

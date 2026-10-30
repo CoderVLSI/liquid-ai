@@ -19,6 +19,15 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
   );
 }
 
+function Choice({ on, title, hint, onPress }: { on: boolean; title: string; hint: string; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.choice, on && styles.choiceOn]} onPress={onPress} accessibilityRole="radio" accessibilityState={{ selected: on }}>
+      <Text style={[styles.choiceTitle, on && { color: colors.accent }]}>{title}</Text>
+      <Text style={styles.choiceHint}>{hint}</Text>
+    </Pressable>
+  );
+}
+
 function Stepper({ value, step, min, max, format, onChange }: { value: number; step: number; min: number; max: number; format?: (v: number) => string; onChange: (v: number) => void }) {
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v * 100) / 100));
   return (
@@ -43,12 +52,24 @@ export function SettingsSheet() {
     <Sheet visible={visible} title="Settings" onClose={() => openSheet('none')}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <Text style={styles.section}>Live voice</Text>
+        <Text style={styles.label}>Who speaks the reply</Text>
+        <View style={styles.choices}>
+          <Choice on={s.voiceOutput === 'phone'} title="Phone voice" hint="Smooth and instant: the model writes, your phone speaks. Recommended." onPress={() => set({ voiceOutput: 'phone' })} />
+          <Choice on={s.voiceOutput === 'lfm'} title="LFM3 voice" hint="The model makes the sound itself. More natural, but breaks up when the phone is too slow." onPress={() => set({ voiceOutput: 'lfm' })} />
+        </View>
+        {s.voiceOutput === 'phone' ? (
+          <Row title="Speaking speed" hint="How fast the phone voice talks">
+            <Stepper value={s.ttsRate} step={0.1} min={0.6} max={1.6} format={(v) => `${v.toFixed(1)}x`} onChange={(v) => set({ ttsRate: v })} />
+          </Row>
+        ) : null}
         <Row title="Interrupt by speaking" hint="Talk over the assistant to cut it off. Works with headphones.">
           <Switch value={s.bargeIn} onValueChange={(v) => set({ bargeIn: v })} />
         </Row>
         <Row title="Interrupt on the loudspeaker too" hint="Off is smoother: the mic is muted while it speaks so it cannot hear itself. Use the Interrupt button instead.">
           <Switch value={s.bargeInOnSpeaker} onValueChange={(v) => set({ bargeInOnSpeaker: v })} />
         </Row>
+        {s.voiceOutput === 'lfm' ? (
+          <>
         <Row title="Smooth speech (buffer)" hint="Audio buffered before it plays. Higher = fewer stutters, slightly later start.">
           <Stepper value={s.voiceBufferMs} step={200} min={0} max={4000} format={(v) => `${v} ms`} onChange={(v) => set({ voiceBufferMs: v })} />
         </Row>
@@ -61,6 +82,8 @@ export function SettingsSheet() {
         <Row title="Show captions while it speaks" hint="Makes the model generate text too, which is slower on a phone. Off = smoother speech.">
           <Switch value={s.speechReply === 'text+audio'} onValueChange={(v) => set({ speechReply: v ? 'text+audio' : 'audio' })} />
         </Row>
+          </>
+        ) : null}
         <Row title="Mic sensitivity" hint="Higher picks up quiet speech, lower ignores noise">
           <Stepper value={s.vadSensitivity} step={0.1} min={0} max={1} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set({ vadSensitivity: v })} />
         </Row>
@@ -71,6 +94,9 @@ export function SettingsSheet() {
         <TextInput style={styles.input} value={s.voicePrompt} onChangeText={(t) => set({ voicePrompt: t })} multiline placeholderTextColor={colors.muted} />
 
         <Text style={styles.section}>Chat</Text>
+        <Row title="Haptic feedback" hint="A tiny buzz on taps and when a reply is ready">
+          <Switch value={s.haptics} onValueChange={(v) => set({ haptics: v })} />
+        </Row>
         <Text style={styles.label}>System prompt</Text>
         <TextInput style={styles.input} value={s.systemPrompt} onChangeText={(t) => set({ systemPrompt: t })} multiline placeholderTextColor={colors.muted} />
 
@@ -105,6 +131,11 @@ export function SettingsSheet() {
 }
 
 const styles = StyleSheet.create({
+  choices: { gap: 8, marginBottom: 6 },
+  choice: { padding: 12, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
+  choiceOn: { borderColor: colors.accent, backgroundColor: colors.accentDim },
+  choiceTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  choiceHint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
   section: { color: colors.accent, fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 22, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowTitle: { color: colors.text, fontSize: 15 },

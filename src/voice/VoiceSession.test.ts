@@ -100,6 +100,27 @@ class FakeAudio implements AudioPort {
   onMicError() {
     return () => {};
   }
+  spoken: string[] = [];
+  ttsBusyUntilStop = false;
+  ttsOk = true;
+  async ttsInit(rate: number, callMode: boolean) {
+    this.calls.push(`ttsInit:${rate}:${callMode}`);
+    return this.ttsOk ? { ok: true, engine: 'fake', lang: 'en-US' } : { ok: false, error: 'no engine' };
+  }
+  ttsSpeak(t: string) {
+    this.spoken.push(t);
+    this.ttsBusyUntilStop = true;
+  }
+  ttsStop() {
+    this.calls.push('ttsStop');
+    this.ttsBusyUntilStop = false;
+  }
+  ttsBusy() {
+    return this.ttsBusyUntilStop;
+  }
+  async ttsShutdown() {
+    this.calls.push('ttsShutdown');
+  }
 }
 
 function setup(over: Partial<Settings> = {}, opts: { headset?: boolean } = {}) {
@@ -126,7 +147,7 @@ function setup(over: Partial<Settings> = {}, opts: { headset?: boolean } = {}) {
     onPrebuffer: (ms) => prebuffers.push(ms),
     log: (m) => logs.push(m),
   };
-  const session = new VoiceSession(client, audio, { ...DEFAULT_SETTINGS, ...over }, cb, () => time.now);
+  const session = new VoiceSession(client, audio, { ...DEFAULT_SETTINGS, voiceOutput: 'lfm', ...over }, cb, () => time.now);
   let n = 0;
   const frame = (rms: number) => session.onFrame({ data: `f${n++}`, rms });
   const frames = (rms: number, count: number) => {
@@ -417,6 +438,87 @@ class FakeSocket implements WebSocketLike {
     this.readyState = 3;
   }
 }
+
+// ---- phone voice (the model writes text, the phone's speech engine says it) ---------------------
+
+const say = (t: ReturnType<typeof setup>, delta: string, id = 'r1') => t.client.emit({ type: 'response.output_text.delta', response_id: id, delta });
+const created = (t: ReturnType<typeof setup>, id = 'r1') => t.client.emit({ type: 'response.created', response: { id } });
+const done = (t: ReturnType<typeof setup>, id = 'r1', status = 'completed') => t.client.emit({ type: 'response.done', response: { id, status } });
+
+test('phone voice asks the model for text only and starts the phone engine', async () => {
+  const t = setup({ voiceOutput: 'phone', ttsRate: 1.2 });
+  await t.session.start();
+  assert.match(t.client.sent[0], /"output_modalities":\["text"\]/);
+  assert.ok(t.audio.calls.includes('ttsInit:1.2:true'));
+  await t.session.stop();
+  assert.ok(t.audio.calls.includes('ttsShutdown'));
+});
+
+test('phone voice speaks each finished sentence as the text streams in, then the rest on done', async () => {
+  const t = setup({ voiceOutput: 'phone' });
+  await t.session.start();
+  created(t);
+  say(t, 'Hello the');
+  say(t, 're. How are');
+  assert.deepEqual(t.audio.spoken, ['Hello there.']);
+  say(t, ' you today? Fine');
+  assert.deepEqual(t.audio.spoken, ['Hello there.', 'How are you today?']);
+  assert.equal(t.session.state, 'speaking');
+  done(t);
+  assert.deepEqual(t.audio.spoken, ['Hello there.', 'How are you today?', 'Fine']);
+  assert.match(t.logs.join('\n'), /reply \(phone voice\): .* chars in 3 parts/);
+  assert.deepEqual(t.texts.join(''), 'Hello there. How are you today? Fine');
+  await t.session.stop();
+});
+
+test('phone voice: interrupting stops the engine and drops the unspoken rest', async () => {
+  const t = setup({ voiceOutput: 'phone' }, { headset: true });
+  await t.session.start();
+  created(t);
+  say(t, 'One sentence here. Another sen');
+  assert.deepEqual(t.audio.spoken, ['One sentence here.']);
+  t.session.interrupt();
+  assert.ok(t.audio.calls.includes('ttsStop'));
+  say(t, 'tence is cut. ', 'r1'); // late text of the cancelled reply is ignored
+  assert.deepEqual(t.audio.spoken, ['One sentence here.']);
+  await t.session.stop();
+});
+
+test('phone voice on the loudspeaker: the mic stays closed while the phone talks', async () => {
+  const t = setup({ voiceOutput: 'phone' }, { headset: false });
+  await t.session.start();
+  created(t);
+  say(t, 'Talking now. More');
+  done(t);
+  t.client.sent.length = 0;
+  t.frames(0.2, 10); // loud, but the engine is still speaking
+  assert.ok(!t.client.sent.some((x) => x.startsWith('append:')));
+  t.audio.ttsBusyUntilStop = false;
+  t.time.now += 2000;
+  t.frames(0.2, 5);
+  assert.ok(t.client.sent.some((x) => x.startsWith('append:')));
+  await t.session.stop();
+});
+
+test('if the phone engine is missing the session falls back to the LFM3 voice and says so', async () => {
+  const t = setup({ voiceOutput: 'phone' });
+  t.audio.ttsOk = false;
+  await t.session.start();
+  assert.match(t.client.sent[0], /"output_modalities":\["audio"\]/);
+  assert.ok(t.errors.some((e) => /phone's voice is not available/.test(e)));
+  assert.ok(t.audio.calls.includes('player:24000'));
+  await t.session.stop();
+});
+
+test('phone voice also works with a text-only model (no audio output at all)', async () => {
+  const t = setup({ voiceOutput: 'phone' });
+  t.client.info = { inputRate: 16000, outputRate: null };
+  await t.session.start();
+  created(t);
+  say(t, 'Okay. ');
+  assert.deepEqual(t.audio.spoken, ['Okay.']);
+  await t.session.stop();
+});
 
 test('RealtimeClient resolves with the rates from session.created and serialises events', async () => {
   const sock = new FakeSocket();

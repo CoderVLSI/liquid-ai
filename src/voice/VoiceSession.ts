@@ -1,6 +1,7 @@
 import type { RealtimeLike, RtEvent } from '../net/RealtimeClient.ts';
 import type { Settings } from '../state/settings.ts';
 import { Vad, vadFromSensitivity } from './vad.ts';
+import { splitSpeech } from './speech.ts';
 
 export type VoiceState = 'connecting' | 'listening' | 'hearing' | 'thinking' | 'speaking' | 'ended' | 'error';
 
@@ -21,6 +22,12 @@ export interface AudioPort {
   playerPendingMs(): number;
   onMicFrame(cb: (f: { data: string; rms: number }) => void): () => void;
   onMicError(cb: (message: string) => void): () => void;
+  /** the phone's own speech engine */
+  ttsInit(rate: number, callMode: boolean): Promise<{ ok: boolean; engine?: string; lang?: string; error?: string }>;
+  ttsSpeak(text: string): void;
+  ttsStop(): void;
+  ttsBusy(): boolean;
+  ttsShutdown(): Promise<unknown>;
 }
 
 export interface VoiceCallbacks {
@@ -68,6 +75,12 @@ export class VoiceSession {
   private respStartedAt = 0;
   private firstAudioAt = 0;
   private audioBytes = 0;
+  /** the phone speaks the reply (the model only writes text) */
+  private phone = false;
+  private speakBuf = '';
+  private spokeChunks = 0;
+  private spokenChars = 0;
+  private textStartedAt = 0;
 
   private responseActive = false;
   private activeResponseId = '';
@@ -101,13 +114,27 @@ export class VoiceSession {
       this.cb.log(`session created: in=${info.inputRate}Hz out=${info.outputRate ?? 'none'}Hz`);
 
       const speak = info.outputRate != null;
-      const modalities = !speak ? ['text'] : this.settings.speechReply === 'audio' ? ['audio'] : ['text', 'audio'];
+      this.callMode = this.settings.callMode;
+
+      // The phone's own voice: the model only writes text (fast), and Android's speech engine says it (free).
+      if (this.settings.voiceOutput === 'phone') {
+        try {
+          const t = await this.audio.ttsInit(this.settings.ttsRate, this.callMode);
+          this.phone = t.ok;
+          this.cb.log(t.ok ? `phone voice ready: ${t.engine ?? '?'} ${t.lang ?? ''}` : `phone voice unavailable (${t.error ?? 'unknown'}), using the LFM3 voice`);
+          if (!t.ok) this.cb.onError(`The phone's voice is not available (${t.error ?? 'unknown'}). Using the LFM3 voice instead.`);
+        } catch (e: any) {
+          this.phone = false;
+          this.cb.log(`phone voice failed: ${e?.message ?? e}; using the LFM3 voice`);
+        }
+      }
+
+      const modalities = this.phone || !speak ? ['text'] : this.settings.speechReply === 'audio' ? ['audio'] : ['text', 'audio'];
       this.client.sessionUpdate({
         instructions: this.settings.voicePrompt,
         output_modalities: modalities,
       });
 
-      this.callMode = this.settings.callMode;
       const route = (await this.audio.enterVoiceMode(this.callMode)) as { headset?: boolean } | undefined;
       this.headset = !!route?.headset;
       this.cb.log(`audio route: ${JSON.stringify(route)} -> ${this.canBargeIn() ? 'interruptible' : 'half-duplex (no interrupting while it speaks; use headphones to interrupt)'}`);
@@ -144,6 +171,7 @@ export class VoiceSession {
     }
     for (const step of [
       () => this.audio.stopMic(),
+      () => (this.phone ? this.audio.ttsShutdown() : Promise.resolve()),
       () => this.audio.stopPlayer(),
       () => this.audio.leaveVoiceMode(),
     ]) {
@@ -176,7 +204,7 @@ export class VoiceSession {
   }
 
   assistantBusy(): boolean {
-    return this.responseActive || this.audio.playerPendingMs() > SPEAKING_TAIL_MS;
+    return this.responseActive || this.audio.playerPendingMs() > SPEAKING_TAIL_MS || (this.phone && this.audio.ttsBusy());
   }
 
   // ---- microphone ------------------------------------------------------------------------------
@@ -239,6 +267,8 @@ export class VoiceSession {
     }
     this.activeResponseId = '';
     this.audio.flushPlayer();
+    if (this.phone) this.audio.ttsStop();
+    this.speakBuf = '';
     this.responseActive = false;
     this.cb.onInterrupted();
   }
@@ -267,6 +297,10 @@ export class VoiceSession {
         this.respStartedAt = this.clock();
         this.firstAudioAt = 0;
         this.audioBytes = 0;
+        this.speakBuf = '';
+        this.spokeChunks = 0;
+        this.spokenChars = 0;
+        this.textStartedAt = 0;
         this.audio.playerBegin();
         this.cb.onResponseStart(id);
         return;
@@ -274,7 +308,9 @@ export class VoiceSession {
       case 'response.output_text.delta': {
         const id = String(e.response_id ?? '');
         if (this.cancelled.has(id)) return;
-        this.cb.onAssistantText(String(e.delta ?? ''), id);
+        const delta = String(e.delta ?? '');
+        this.cb.onAssistantText(delta, id);
+        if (this.phone) this.feedSpeech(delta, false);
         return;
       }
       case 'response.output_audio.delta': {
@@ -295,6 +331,7 @@ export class VoiceSession {
         }
         this.responseActive = false;
         this.activeResponseId = '';
+        if (this.phone) this.feedSpeech('', status !== 'cancelled');
         this.audio.playerEnd(); // play out the tail even if it is shorter than the buffer
         this.reportAndTune();
         this.cb.onResponseDone(id, status);
@@ -313,8 +350,31 @@ export class VoiceSession {
     }
   }
 
+  /** Sends finished sentences of the streaming text to the phone's speech engine. */
+  private feedSpeech(delta: string, final: boolean) {
+    if (delta && !this.textStartedAt) this.textStartedAt = this.clock();
+    this.speakBuf += delta;
+    const { chunks, rest } = splitSpeech(this.speakBuf, { final, first: this.spokeChunks === 0 });
+    this.speakBuf = rest;
+    for (const c of chunks) {
+      this.audio.ttsSpeak(c);
+      this.spokeChunks++;
+      this.spokenChars += c.length;
+    }
+    if (chunks.length && this.state !== 'hearing') this.setState('speaking');
+  }
+
   /** Logs how fast speech was generated and nudges the jitter buffer to match this phone. */
   private reportAndTune() {
+    if (this.phone && !this.audioBytes) {
+      if (this.spokeChunks) {
+        this.cb.log(
+          `reply (phone voice): ${this.spokenChars} chars in ${this.spokeChunks} parts, text started after ${this.textStartedAt ? this.textStartedAt - this.respStartedAt : '-'} ms, ` +
+            `whole text in ${((this.clock() - this.respStartedAt) / 1000).toFixed(1)} s`,
+        );
+      }
+      return;
+    }
     if (!this.audioBytes) return;
     const audioMs = (this.audioBytes / 2 / this.outRate) * 1000;
     const wallMs = Math.max(1, this.clock() - this.respStartedAt);

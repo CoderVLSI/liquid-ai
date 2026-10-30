@@ -33,6 +33,13 @@ export interface PlayerStats {
   bufferedMs: number;
 }
 
+export interface TtsInit {
+  ok: boolean;
+  engine?: string;
+  lang?: string;
+  error?: string;
+}
+
 export interface CrashReport {
   name: string;
   text: string;
@@ -65,6 +72,11 @@ interface Raw {
   playPcm(base64: string): void;
   flushPlayer(): void;
   playerPendingMs(): number;
+  ttsInit(rate: number, callMode: boolean): Promise<TtsInit>;
+  ttsSpeak(text: string): void;
+  ttsStop(): void;
+  ttsBusy(): boolean;
+  ttsShutdown(): Promise<void>;
   stopPlayer(): Promise<void>;
   setWakeLock(on: boolean): void;
   fileSize(path: string): number;
@@ -122,6 +134,11 @@ export const native = {
   playPcm: (b64: string) => need().playPcm(b64),
   flushPlayer: () => mod?.flushPlayer(),
   playerPendingMs: () => (mod ? mod.playerPendingMs() : 0),
+  ttsInit: (rate: number, callMode: boolean) => need().ttsInit(rate, callMode),
+  ttsSpeak: (text: string) => mod?.ttsSpeak(text),
+  ttsStop: () => mod?.ttsStop(),
+  ttsBusy: () => (mod ? mod.ttsBusy() : false),
+  ttsShutdown: () => (mod ? mod.ttsShutdown() : Promise.resolve()),
   stopPlayer: () => (mod ? mod.stopPlayer() : Promise.resolve()),
   setWakeLock: (on: boolean) => mod?.setWakeLock(on),
   fileSize: (p: string) => (mod ? mod.fileSize(p) : -1),
