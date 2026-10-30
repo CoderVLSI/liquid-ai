@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { colors } from './theme';
+import { useReduceMotion } from './useReduceMotion';
 
 const orb = require('../../assets/art/orb.png');
 
@@ -23,9 +24,14 @@ export function Mascot({ mood, size = 120 }: { mood: MascotMood; size?: number }
   const hop = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(1)).current;
   const look = useRef(new Animated.Value(0)).current;
+  const reduce = useReduceMotion();
 
-  // gentle floating, always
+  // gentle floating, always (unless the user turned animations off)
   useEffect(() => {
+    if (reduce) {
+      float.setValue(0.5);
+      return undefined;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(float, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -34,13 +40,14 @@ export function Mascot({ mood, size = 120 }: { mood: MascotMood; size?: number }
     );
     loop.start();
     return () => loop.stop();
-  }, [float]);
+  }, [float, reduce]);
 
   // mood-specific motion
   useEffect(() => {
     pulse.setValue(0);
     hop.setValue(0);
     look.setValue(0);
+    if (reduce) return undefined;
     let loop: Animated.CompositeAnimation | null = null;
     if (mood === 'working') {
       loop = Animated.loop(
@@ -76,7 +83,7 @@ export function Mascot({ mood, size = 120 }: { mood: MascotMood; size?: number }
       loop?.stop();
       lookLoop?.stop();
     };
-  }, [mood, pulse, hop, look]);
+  }, [mood, pulse, hop, look, reduce]);
 
   // blinking
   useEffect(() => {
@@ -85,6 +92,7 @@ export function Mascot({ mood, size = 120 }: { mood: MascotMood; size?: number }
       return undefined;
     }
     blink.setValue(1);
+    if (reduce) return undefined;
     const t = setInterval(() => {
       Animated.sequence([
         Animated.timing(blink, { toValue: 0.08, duration: 80, useNativeDriver: true }),
@@ -92,7 +100,7 @@ export function Mascot({ mood, size = 120 }: { mood: MascotMood; size?: number }
       ]).start();
     }, 3300);
     return () => clearInterval(t);
-  }, [mood, blink]);
+  }, [mood, blink, reduce]);
 
   const translateY = Animated.add(
     float.interpolate({ inputRange: [0, 1], outputRange: [3, -5] }),

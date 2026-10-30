@@ -3,6 +3,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useApp } from './hooks';
 import { colors } from './theme';
 import { Icon } from './Icon';
+import { useReduceMotion } from './useReduceMotion';
 import { interruptAssistant, setMuted, stopVoice } from '../app/controller';
 
 const orb = require('../../assets/art/orb.png');
@@ -29,6 +30,7 @@ export function LivePanel() {
   const callMode = useApp((s) => s.settings.callMode);
   const level = useRef(new Animated.Value(1)).current;
   const pulse = useRef(new Animated.Value(0)).current;
+  const reduce = useReduceMotion();
 
   // The orb swells with your voice while you talk, and breathes while the model thinks or speaks.
   useEffect(() => {
@@ -39,7 +41,7 @@ export function LivePanel() {
   }, [voice.level, voice.state, level]);
 
   useEffect(() => {
-    if (voice.state === 'thinking' || voice.state === 'speaking') {
+    if (!reduce && (voice.state === 'thinking' || voice.state === 'speaking')) {
       const half = voice.state === 'speaking' ? 420 : 750;
       const loop = Animated.loop(
         Animated.sequence([
@@ -52,7 +54,7 @@ export function LivePanel() {
     }
     pulse.setValue(0);
     return undefined;
-  }, [voice.state, pulse]);
+  }, [voice.state, pulse, reduce]);
 
   const breathe = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] });
   const animated = voice.state === 'thinking' || voice.state === 'speaking';

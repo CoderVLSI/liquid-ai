@@ -18,9 +18,9 @@ adb shell wm dismiss-keyguard 2>/dev/null || true
 # The CI emulator is a slow virtual phone: the system launcher can stall and pop an "isn't responding" dialog that
 # blocks every tap. Hide those dialogs (crashes are still detected through logcat / the process list) and settle first.
 adb shell settings put global hide_error_dialogs 1 || true
-adb shell settings put global window_animation_scale 0 || true
-adb shell settings put global transition_animation_scale 0 || true
-adb shell settings put global animator_duration_scale 0 || true
+adb shell settings put global window_animation_scale 0.0 || true
+adb shell settings put global transition_animation_scale 0.0 || true
+adb shell settings put global animator_duration_scale 0.0 || true
 echo "waiting for the emulator to settle..."; sleep 25
 
 echo "== install"
@@ -29,16 +29,31 @@ adb shell pm grant "$PKG" android.permission.RECORD_AUDIO || true
 adb logcat -c
 
 dump_ui() { # dump_ui <name>
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
-  adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
+  # uiautomator refuses to dump a screen that never goes idle (e.g. a looping animation) and then leaves the OLD file in
+  # place, which would silently show the previous screen. Delete it first so a failed dump is detected, and retry.
+  local ok=0
+  for attempt in 1 2 3; do
+    adb shell rm -f /sdcard/ui.xml >/dev/null 2>&1
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    if adb shell test -s /sdcard/ui.xml 2>/dev/null; then ok=1; break; fi
+    sleep 2
+  done
+  if [ "$ok" -eq 1 ]; then
+    adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
+  else
+    echo "(uiautomator could not dump '$1': the screen never went idle, probably a looping animation)"
+    echo '<hierarchy/>' > "$OUT/$1.xml"
+  fi
   if grep -q "isn't responding" "$OUT/$1.xml" 2>/dev/null; then
     echo "(a system 'isn't responding' dialog appeared; pressing Wait)"
     tap_desc "Wait" "$1" >/dev/null; sleep 3
+    adb shell rm -f /sdcard/ui.xml >/dev/null 2>&1
     adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
     adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
   fi
   adb exec-out screencap -p > "$OUT/$1.png" 2>/dev/null
 }
+
 ui_has() { grep -qF "$1" "$OUT/$2.xml" 2>/dev/null; }
 # print every text / content-desc on a dumped screen (xml-unescaped), to see what the app really showed
 show_ui() { python3 - "$OUT/$1.xml" <<'PY'
