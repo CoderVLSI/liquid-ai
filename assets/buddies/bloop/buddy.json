@@ -1,16 +1,5 @@
 {
   "name": "Bloop",
   "tagline": "A curious little splash of joy.",
-  "color": "#27E8F6",
-  "forms": {
-    "stage2": {
-      "name": "Bloopa"
-    },
-    "stage3": {
-      "name": "Tidalon"
-    },
-    "mega": {
-      "name": "Mega Tidalon"
-    }
-  }
+  "color": "#27E8F6"
 }

@@ -12,6 +12,7 @@ Turns a character sheet (a grid of poses, e.g. made with ChatGPT) into the buddy
                              sheet is already transparent
   --tolerance 48             how different from the background a pixel must be to count as the character
   --erase-shadow             also remove soft drop shadows under the character
+  --auto                     find poses by their own outline (use when a tail/arm crosses a grid line)
   --inset 8                  pixels to ignore at the edge of each cell (grid lines, neighbours)
   --size 512                 output size of each pose
   --form stage2|stage3|mega  write an evolved form into <id>/<form>/ (the base buddy must already exist)
@@ -79,6 +80,10 @@ def cut_background(cell, bg, tol, erase_shadow=False):
             if marked.getpixel((x, y)) == 255:
                 ImageDraw.floodfill(marked, (x, y), 128)
     alpha = marked.point(lambda v: 0 if v == 128 else 255)
+    # background trapped inside the picture (between an arm and a tail, inside a ring...) is not reached by the flood
+    # from the border: clear pixels that are almost exactly the background colour wherever they are
+    exact = maxdiff.point(lambda v: 0 if v <= max(10, tol * 2 // 3) else 255)
+    alpha = ImageChops.multiply(alpha, exact)
     alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8))
     out = rgb.convert("RGBA")
     out.putalpha(alpha)
@@ -94,6 +99,64 @@ def cut_background(cell, bg, tol, erase_shadow=False):
     return out
 
 
+def auto_cells(sheet, bg, tol, n, cols, rows):
+    """Finds each pose by its own outline instead of a rigid grid, so a tail or an arm that crosses the grid line is
+    kept whole. Returns [(box, mask)] in reading order, or None when it cannot tell exactly n poses apart."""
+    from collections import deque
+    S = 4  # work on a quarter-size picture
+    small = sheet.convert("RGB").resize((sheet.width // S, sheet.height // S), Image.BOX)
+    diff = ImageChops.difference(small, Image.new("RGB", small.size, bg))
+    r, g, b = diff.split()
+    fg = ImageChops.lighter(ImageChops.lighter(r, g), b).point(lambda v: 255 if v > tol else 0)
+    w, h = fg.size
+    for radius in range(3, 30):  # grow the shapes until the props join their character and nothing else joins
+        grown = fg.filter(ImageFilter.MaxFilter(2 * radius + 1))
+        gp = grown.load()
+        seen = [[False] * w for _ in range(h)]
+        found = []
+        for y in range(h):
+            for x in range(w):
+                if gp[x, y] and not seen[y][x]:
+                    q = deque([(x, y)])
+                    seen[y][x] = True
+                    pts = []
+                    while q:
+                        cx, cy = q.popleft()
+                        pts.append((cx, cy))
+                        for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                            if 0 <= nx < w and 0 <= ny < h and gp[nx, ny] and not seen[ny][nx]:
+                                seen[ny][nx] = True
+                                q.append((nx, ny))
+                    if len(pts) > 40:  # ignore specks
+                        found.append(pts)
+        if len(found) == n:
+            break
+        if len(found) < n:
+            return None
+    else:
+        return None
+    items = []
+    for pts in found:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        m = Image.new("L", (w, h), 0)
+        mp = m.load()
+        for (x, y) in pts:
+            mp[x, y] = 255
+        items.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, (min(xs), min(ys), max(xs) + 1, max(ys) + 1), m))
+    items.sort(key=lambda it: it[1])
+    ordered = []
+    for r_i in range(rows):  # split into rows by height, each row left to right
+        row = sorted(items[r_i * cols:(r_i + 1) * cols], key=lambda it: it[0])
+        ordered.extend(row)
+    out = []
+    for cx, cy, (x0, y0, x1, y1), m in ordered:
+        pad = 4
+        box = (max(0, (x0 - pad) * S), max(0, (y0 - pad) * S), min(sheet.width, (x1 + pad) * S), min(sheet.height, (y1 + pad) * S))
+        out.append((box, m.resize((w * S, h * S), Image.NEAREST).crop(box)))
+    return out
+
+
 def prepare(cell, pose, a, index):
     """Background removal + tight crop for one pose image."""
     if is_transparent(cell):
@@ -101,7 +164,17 @@ def prepare(cell, pose, a, index):
     else:
         bg = corner_color(cell) if a.bg == "auto" else parse_color(a.bg)
         out = cut_background(cell, bg, a.tolerance, a.erase_shadow)
-    box = out.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
+    alpha_ch = out.getchannel("A")
+    aw, ah = alpha_ch.size
+    ap = alpha_ch.load()
+    touching = [side for side, pts in (
+        ("left", ((0, y) for y in range(ah))), ("right", ((aw - 1, y) for y in range(ah))),
+        ("top", ((x, 0) for x in range(aw))), ("bottom", ((x, ah - 1) for x in range(aw))))
+        if sum(1 for pt in pts if ap[pt] > 24) >= 8]  # a real run of picture on the edge, not one stray pixel
+    if touching and index is not None:
+        print("WARNING: %s touches the %s edge of its cell: it is probably CUT OFF. Regenerate the sheet with more empty "
+              "margin around each pose." % ("cell %d (%s)" % (index + 1, pose), " and ".join(touching)))
+    box = alpha_ch.point(lambda v: 255 if v > 24 else 0).getbbox()
     if not box:
         where = "cell %d (%s)" % (index + 1, pose) if index is not None else pose
         sys.exit("%s is empty: check --cols/--rows or --tolerance" % where)
@@ -123,6 +196,7 @@ def main():
     ap.add_argument("--erase-shadow", action="store_true", help="also remove soft shadows (darker versions of the background colour)")
     ap.add_argument("--inset", type=int, default=8)
     ap.add_argument("--size", type=int, default=512)
+    ap.add_argument("--auto", action="store_true", help="find each pose by its own outline instead of an equal grid (fixes tails/arms that cross a grid line)")
     ap.add_argument("--form", choices=["stage2", "stage3", "mega"], default="")
     ap.add_argument("--form-name", default="")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "assets", "buddies"))
@@ -145,7 +219,20 @@ def main():
         W, H = sheet.size
         cw, ch = W // a.cols, H // a.rows
         print("sheet %dx%d, cells %dx%d" % (W, H, cw, ch))
+        auto = None
+        if a.auto:
+            bgc = corner_color(sheet) if a.bg == "auto" else parse_color(a.bg)
+            auto = auto_cells(sheet, bgc, a.tolerance, len(poses), a.cols, a.rows)
+            print("auto: found %s poses by outline" % ("all %d" % len(poses) if auto else "NOT all"))
         for i, pose in enumerate(poses):
+            if auto:
+                (box, mask) = auto[i]
+                cell = sheet.crop(box)
+                bgc = corner_color(sheet) if a.bg == "auto" else parse_color(a.bg)
+                flat = Image.new("RGBA", cell.size, bgc + (255,))
+                flat.paste(cell, (0, 0), mask)  # only this pose's own pixels; a neighbour's bleed becomes background
+                cut[pose] = prepare(flat, pose, a, i)
+                continue
             x, y = (i % a.cols) * cw, (i // a.cols) * ch
             cell = sheet.crop((x + a.inset, y + a.inset, x + cw - a.inset, y + ch - a.inset))
             cut[pose] = prepare(cell, pose, a, i)

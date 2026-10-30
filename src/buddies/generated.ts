@@ -33,47 +33,6 @@ export const GENERATED: BuddyData[] = [
       sleep: require('../../assets/buddies/bloop/sleep.png'),
       sad: require('../../assets/buddies/bloop/sad.png'),
     },
-    forms: {
-      stage2: {
-        name: "Bloopa",
-        poses: {
-          idle: require('../../assets/buddies/bloop/stage2/idle.png'),
-          blink: require('../../assets/buddies/bloop/stage2/blink.png'),
-          talk: require('../../assets/buddies/bloop/stage2/talk.png'),
-          happy: require('../../assets/buddies/bloop/stage2/happy.png'),
-          think: require('../../assets/buddies/bloop/stage2/think.png'),
-          wait: require('../../assets/buddies/bloop/stage2/wait.png'),
-          sleep: require('../../assets/buddies/bloop/stage2/sleep.png'),
-          sad: require('../../assets/buddies/bloop/stage2/sad.png'),
-        },
-      },
-      stage3: {
-        name: "Tidalon",
-        poses: {
-          idle: require('../../assets/buddies/bloop/stage3/idle.png'),
-          blink: require('../../assets/buddies/bloop/stage3/blink.png'),
-          talk: require('../../assets/buddies/bloop/stage3/talk.png'),
-          happy: require('../../assets/buddies/bloop/stage3/happy.png'),
-          think: require('../../assets/buddies/bloop/stage3/think.png'),
-          wait: require('../../assets/buddies/bloop/stage3/wait.png'),
-          sleep: require('../../assets/buddies/bloop/stage3/sleep.png'),
-          sad: require('../../assets/buddies/bloop/stage3/sad.png'),
-        },
-      },
-      mega: {
-        name: "Mega Tidalon",
-        poses: {
-          idle: require('../../assets/buddies/bloop/mega/idle.png'),
-          blink: require('../../assets/buddies/bloop/mega/blink.png'),
-          talk: require('../../assets/buddies/bloop/mega/talk.png'),
-          happy: require('../../assets/buddies/bloop/mega/happy.png'),
-          think: require('../../assets/buddies/bloop/mega/think.png'),
-          wait: require('../../assets/buddies/bloop/mega/wait.png'),
-          sleep: require('../../assets/buddies/bloop/mega/sleep.png'),
-          sad: require('../../assets/buddies/bloop/mega/sad.png'),
-        },
-      },
-    },
   },
   {
     id: "ember",
