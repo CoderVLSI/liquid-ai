@@ -35,6 +35,12 @@ export interface EngineDeps {
 }
 
 const MAX_TOOL_OUTPUT = 3000;
+const MAX_WEB_CALLS = 3;
+
+/** "remind me to...", "notify me at...", "don't let me forget..." */
+export function isReminderGoal(goal: string): boolean {
+  return /\b(remind|reminder|notify me|alert me|ping me|don'?t (let me )?forget)\b/i.test(goal);
+}
 
 export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: number): string {
   const mates = team.filter((a) => a.id !== agent.id);
@@ -110,9 +116,13 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
   const steps: Step[] = [...task.steps];
   let stepCount = task.stepCount;
   const canDelegate = task.depth < MAX_DELEGATION_DEPTH && deps.team.some((a) => a.id !== deps.agent.id);
-  const schemas = toolSchemas(deps.tools, canDelegate);
-  const byName = new Map(deps.tools.map((t) => [t.name, t]));
+  // A small model drifts into web searches for personal requests, so a reminder-style task never gets the web tools,
+  // and any other task gets a small search budget instead of an open-ended hunt.
+  const tools = isReminderGoal(task.goal) ? deps.tools.filter((t) => !t.web) : deps.tools;
+  const schemas = toolSchemas(tools, canDelegate);
+  const byName = new Map(tools.map((t) => [t.name, t]));
   const seen = new Map<string, number>();
+  let webCalls = task.steps.filter((s) => s.kind === 'tool' && /^(web_search|fetch_url)\(/.test(s.title)).length;
 
   const push = (s: Omit<Step, 't'>) => steps.push({ ...s, t: deps.now().getTime() });
   const sync = () => deps.onUpdate({ messages: [...messages], steps: [...steps], stepCount });
@@ -194,6 +204,12 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
           const question = tool.approval(parsed.args);
           push({ kind: 'ask', title: 'Needs your approval', detail: question });
           pending.push({ callId: call.id, kind: 'approve', question, tool: call.name, args: parsed.args });
+          continue;
+        }
+
+        if (tool.web && ++webCalls > MAX_WEB_CALLS) {
+          reply('Web lookup budget used up. Do not search any more; give your final answer with what you have, or say you could not find it.');
+          push({ kind: 'info', title: `Too many web lookups, ${call.name} skipped` });
           continue;
         }
 

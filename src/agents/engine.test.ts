@@ -279,3 +279,23 @@ test('an approval keeps the task waiting for the user, not for teammates', async
   const r2 = resolvePending({ ...newTask({ pending: [pending[0]] }) }, 'a', 'denied');
   assert.equal(r2.status, 'queued');
 });
+
+const webTool = (name: string): Tool => ({ name, description: name, web: true, parameters: { type: 'object', properties: { q: { type: 'string' } } }, async run() { return 'result'; } });
+
+test('a reminder-style task is never offered the web tools', async () => {
+  const { deps, llm } = setup([say('ok')], {}, [echo, webTool('web_search'), webTool('fetch_url')]);
+  await runTask(newTask({ goal: 'Remind me at 11:30 to submit the assignment' }), deps);
+  const names = llm.requests[0].tools.map((t: any) => t.function.name);
+  assert.ok(names.includes('echo'));
+  assert.ok(!names.includes('web_search') && !names.includes('fetch_url'));
+});
+
+test('other tasks keep the web tools but only get a few lookups', async () => {
+  const lookups = [1, 2, 3, 4, 5].map((i) => use(call('web_search', { q: `q${i}` }, `w${i}`)));
+  const { deps, llm } = setup([...lookups, say('gave up')], {}, [webTool('web_search')]);
+  const r = await runTask(newTask({ goal: 'find the capital of Peru' }), deps);
+  assert.equal(r.status, 'done');
+  const results = llm.requests[5].messages.filter((m: any) => m.role === 'tool').map((m: any) => m.content);
+  assert.equal(results.filter((c: string) => c === 'result').length, 3);
+  assert.ok(results.some((c: string) => /budget used up/.test(c)));
+});
