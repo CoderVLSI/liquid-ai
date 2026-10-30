@@ -82,4 +82,20 @@ export const GENERATED: BuddyData[] = [
       sad: require('../../assets/buddies/nimbus/sad.png'),
     },
   },
+  {
+    id: "pebble",
+    name: "Pebble",
+    tagline: "A steady friend through every adventure.",
+    color: "#A8B5C8",
+    poses: {
+      idle: require('../../assets/buddies/pebble/idle.png'),
+      blink: require('../../assets/buddies/pebble/blink.png'),
+      talk: require('../../assets/buddies/pebble/talk.png'),
+      happy: require('../../assets/buddies/pebble/happy.png'),
+      think: require('../../assets/buddies/pebble/think.png'),
+      wait: require('../../assets/buddies/pebble/wait.png'),
+      sleep: require('../../assets/buddies/pebble/sleep.png'),
+      sad: require('../../assets/buddies/pebble/sad.png'),
+    },
+  },
 ];
