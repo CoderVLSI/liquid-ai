@@ -8,6 +8,7 @@ import type { MascotMood } from './Mascot';
 import { Chip, IDEAS, TaskCard } from './AgentsSheet';
 import { enqueue } from '../agents/runner';
 import { openSheet } from '../app/controller';
+import { log } from '../lib/log';
 import type { AgentTask } from '../agents/types';
 
 const MAIN_AGENT = 'atlas'; // "Pocket": the one agent the user talks to; Scout and Scribe are hidden helpers
@@ -85,6 +86,10 @@ function Composer() {
 
 /** The Agent half of the app: Pocket the mascot on top, a feed of tasks you gave it, a composer below. */
 export function AgentScreen() {
+  useEffect(() => {
+    log.info('ui', 'AgentScreen mounted');
+    return () => log.info('ui', 'AgentScreen unmounted');
+  }, []);
   const { mood, line } = useMood();
   const tasks = useAgents((s) => s.tasks);
   const hasModel = useDownloads();

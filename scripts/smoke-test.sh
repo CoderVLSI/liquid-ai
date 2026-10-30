@@ -127,9 +127,14 @@ close_sheet
 
 # the separate Agents button is gone; Agent is a mode toggle next to Chat
 if ui_has 'content-desc="Agents"' home; then fail "the old Agents button is still there"; else ok "no separate Agents button"; fi
-tap_desc "Agent mode" home; sleep 4; dump_ui agent
-if ! ui_has "Give Pocket a task" agent; then echo "(mode did not switch yet; tapping the Agent toggle again)"; tap_desc "Agent mode" home; sleep 4; dump_ui agent; fi
-show_ui agent
+tap_desc "Agent mode" home; sleep 5; dump_ui agent
+echo "--- after the first tap:"; show_ui agent
+adb logcat -d -v time | grep "LiquidVoice" | grep "\[ui\]" | tail -8 | cut -c1-200
+if ! ui_has "Give Pocket a task" agent; then
+  echo "(mode did not switch; tapping the Agent toggle once more)"; tap_desc "Agent mode" home; sleep 5; dump_ui agent
+  echo "--- after the second tap:"; show_ui agent
+  adb logcat -d -v time | grep "LiquidVoice" | grep "\[ui\]" | tail -8 | cut -c1-200
+fi
 # note: the dump escapes '&', so match on words without it
 if ui_has "Give Pocket a task" agent && ui_has "Agent settings" agent; then ok "Agent mode shows Pocket, its composer and tools button"; else fail "Agent mode did not render"; show_crash; fi
 if ui_has "Pocket is" agent; then ok "mascot rendered"; else echo "(mascot label not detected)"; fi

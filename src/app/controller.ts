@@ -122,6 +122,7 @@ export function toast(msg: string, ms = 3500) {
 }
 
 export function setMode(mode: Mode) {
+  log.info('ui', `mode request: ${appStore.get().mode} -> ${mode}`);
   if (appStore.get().mode === mode) return;
   if (mode === 'agent' && voice) void stopVoice(); // a live voice session belongs to Chat
   appStore.set({ mode });
