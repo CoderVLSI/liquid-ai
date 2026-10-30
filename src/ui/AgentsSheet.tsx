@@ -24,10 +24,10 @@ export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
 const STEP_ICON: Record<Step['kind'], string> = { tool: '🔧', result: '✅', ask: '❓', delegate: '👥', info: '💭', error: '⚠️' };
 
 export const IDEAS = [
-  'Find the latest news about on-device AI and summarize it in 5 bullets',
-  'Plan my day: ask me what I need to do, then save it as a note',
-  'Remind me to stretch in 30 minutes',
-  'What is 18% of 2,450 plus 75?',
+  'Remind me at 5pm to submit the assignment',
+  'Add buy milk to my to-do list',
+  'What is the weather in Pilani?',
+  'Who is Ada Lovelace?',
 ];
 
 export function ago(t: number): string {

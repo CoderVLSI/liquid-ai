@@ -11,7 +11,7 @@ import { runTask, resolvePending } from './engine';
 import { buildTools } from './tools';
 import { ServerLlm } from './llm';
 import { connectionTools } from '../connections/store';
-import type { Agent, AgentTask, Note, Tool } from './types';
+import type { Agent, AgentTask, Note, Reminder, Todo, Tool } from './types';
 
 let started = false;
 let pumping = false;
@@ -30,8 +30,8 @@ function persistSoon() {
   persistTimer = setTimeout(() => {
     persistTimer = null;
     try {
-      const { agents, tasks, notes } = agentStore.get();
-      native.writeText(file(), serialize({ agents, tasks, notes }), false);
+      const { agents, tasks, notes, reminders, todos } = agentStore.get();
+      native.writeText(file(), serialize({ agents, tasks, notes, reminders, todos }), false);
     } catch (e) {
       log.warn('agents', 'save failed', stringify(e));
     }
@@ -85,6 +85,49 @@ export const notesApi = {
     agentStore.set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
     persistSoon();
     return agentStore.get().notes.length < before;
+  },
+};
+
+// ---- reminders and to-dos (used by the reminder / to-do tools) --------------------------------
+
+export const remindersApi = {
+  add(id: number, at: number, text: string) {
+    const now = Date.now();
+    agentStore.set((s) => ({ reminders: [...s.reminders.filter((r) => r.at > now), { id, at, text }] }));
+    persistSoon();
+  },
+  list: (): Reminder[] => agentStore.get().reminders,
+  cancel(id: number): boolean {
+    const had = agentStore.get().reminders.some((r) => r.id === id);
+    if (had) {
+      try {
+        native.cancelReminder(id);
+      } catch (e) {
+        log.warn('agents', 'cancelReminder failed', stringify(e));
+      }
+      agentStore.set((s) => ({ reminders: s.reminders.filter((r) => r.id !== id) }));
+      persistSoon();
+    }
+    return had;
+  },
+};
+
+export const todosApi = {
+  add(text: string): Todo {
+    const t: Todo = { id: newId('d'), text, done: false, t: Date.now() };
+    agentStore.set((s) => ({ todos: [...s.todos, t] }));
+    persistSoon();
+    return t;
+  },
+  list: (): Todo[] => agentStore.get().todos,
+  complete(idOrText: string): Todo | null {
+    const q = idOrText.trim().toLowerCase();
+    const open = agentStore.get().todos.filter((t) => !t.done);
+    const hit = open.find((t) => t.id.toLowerCase() === q) ?? open.find((t) => t.text.toLowerCase().includes(q)) ?? open.find((t) => q.includes(t.text.toLowerCase()));
+    if (!hit) return null;
+    agentStore.set((s) => ({ todos: s.todos.map((t) => (t.id === hit.id ? { ...t, done: true } : t)) }));
+    persistSoon();
+    return hit;
   },
 };
 
@@ -262,8 +305,11 @@ function toolsFor(agent: Agent, allowWeb: boolean): Tool[] {
       scheduleReminder: (atMs, text) => {
         const rid = notifyId(newId('r'));
         native.scheduleReminder(rid, atMs, `⏰ ${agent.name}`, text);
+        remindersApi.add(rid, atMs, text);
         return rid;
       },
+      reminders: remindersApi,
+      todos: todosApi,
     }),
     ...connectionTools(),
   ].filter((t) => !t.web || allowWeb);

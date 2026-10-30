@@ -1,9 +1,11 @@
-import type { Agent, AgentTask, Note } from './types.ts';
+import type { Agent, AgentTask, Note, Reminder, Todo } from './types.ts';
 
 export interface SavedAgents {
   agents: Agent[];
   tasks: AgentTask[];
   notes: Note[];
+  reminders?: Reminder[];
+  todos?: Todo[];
 }
 
 /** The built-in team. Atlas coordinates; the others are specialists it can hand work to. */
@@ -12,7 +14,7 @@ export const DEFAULT_AGENTS: Agent[] = [
     id: 'atlas',
     name: 'Pocket',
     emoji: '✨',
-    role: 'You are the user\'s personal agent, a friendly assistant mascot. Plan the work, do simple parts yourself, and hand research or note-keeping to your helpers when it speeds things up.',
+    role: 'You are the user\'s personal agent, a friendly assistant mascot.',
     builtin: true,
   },
   {
@@ -41,12 +43,12 @@ export function serialize(s: SavedAgents): string {
   const tasks = s.tasks
     .slice(-MAX_TASKS)
     .map((t) => (finished.has(t.status) ? { ...t, messages: [] } : t));
-  return JSON.stringify({ v: 1, agents: s.agents, tasks, notes: s.notes.slice(-300) });
+  return JSON.stringify({ v: 1, agents: s.agents, tasks, notes: s.notes.slice(-300), reminders: (s.reminders ?? []).slice(-100), todos: (s.todos ?? []).slice(-200) });
 }
 
 /** Reads the saved file; tasks that were running when the app died are put back in the queue. */
 export function deserialize(raw: string | null): SavedAgents {
-  const empty = { agents: DEFAULT_AGENTS, tasks: [] as AgentTask[], notes: [] as Note[] };
+  const empty = { agents: DEFAULT_AGENTS, tasks: [] as AgentTask[], notes: [] as Note[], reminders: [] as Reminder[], todos: [] as Todo[] };
   if (!raw) return empty;
   try {
     const j = JSON.parse(raw);
@@ -60,7 +62,13 @@ export function deserialize(raw: string | null): SavedAgents {
       pending: t.pending ?? [],
       status: t.status === 'running' ? 'queued' : t.status,
     }));
-    return { agents: [...DEFAULT_AGENTS, ...custom], tasks, notes: Array.isArray(j.notes) ? j.notes : [] };
+    return {
+      agents: [...DEFAULT_AGENTS, ...custom],
+      tasks,
+      notes: Array.isArray(j.notes) ? j.notes : [],
+      reminders: Array.isArray(j.reminders) ? j.reminders : [],
+      todos: Array.isArray(j.todos) ? j.todos : [],
+    };
   } catch {
     return empty;
   }

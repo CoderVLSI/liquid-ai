@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runTask, resolvePending, toolSchemas } from './engine.ts';
+import { pickSkills } from './skills.ts';
 import type { EngineDeps, LlmClient, LlmResponse } from './engine.ts';
 import type { Agent, AgentTask, Tool } from './types.ts';
 import { buildTools } from './tools.ts';
@@ -178,7 +179,8 @@ test('a task resumed from saved messages continues instead of starting over', as
 
 function realTools(over: Partial<ToolDeps> = {}) {
   const notes: { id: string; text: string; t: number }[] = [];
-  const reminders: { at: number; text: string }[] = [];
+  const reminders: { id: number; at: number; text: string }[] = [];
+  const todos: { id: string; text: string; done: boolean; t: number }[] = [];
   const tools = buildTools({
     now: () => NOW,
     fetchText: async () => ({ status: 200, text: '', contentType: 'text/html' }),
@@ -187,11 +189,20 @@ function realTools(over: Partial<ToolDeps> = {}) {
       list: () => notes,
       remove: (id) => { const i = notes.findIndex((n) => n.id === id); if (i < 0) return false; notes.splice(i, 1); return true; },
     },
-    scheduleReminder: (at, text) => { reminders.push({ at, text }); return 1; },
+    scheduleReminder: (at, text) => { const id = reminders.length + 1; reminders.push({ id, at, text }); return id; },
+    reminders: {
+      list: () => reminders,
+      cancel: (id) => { const i = reminders.findIndex((r) => r.id === id); if (i < 0) return false; reminders.splice(i, 1); return true; },
+    },
+    todos: {
+      add: (text) => { const t = { id: `d${todos.length + 1}`, text, done: false, t: NOW.getTime() }; todos.push(t); return t; },
+      list: () => todos,
+      complete: (q) => { const t = todos.find((x) => !x.done && (x.id === q || x.text.toLowerCase().includes(q.toLowerCase()))); if (!t) return null; t.done = true; return t; },
+    },
     ...over,
   });
   const run = (name: string, args: Record<string, unknown>) => tools.find((t) => t.name === name)!.run(args);
-  return { tools, run, notes, reminders };
+  return { tools, run, notes, reminders, todos };
 }
 
 test('calculator tool is exact and safe', async () => {
@@ -210,13 +221,72 @@ test('notes can be saved, searched and deleted', async () => {
   assert.match(await run('list_notes', {}), /call mum/);
 });
 
-test('reminders accept minutes or a date-time and reject the past', async () => {
+test('reminders understand plain words, deadlines and reject the past', async () => {
   const { run, reminders } = realTools();
-  assert.match(await run('set_reminder', { text: 'tea', minutes: '10' }), /Reminder set/);
+  assert.match(await run('set_reminder', { text: 'tea', when: 'in 10 minutes' }), /Reminder set .*: tea/);
   assert.equal(reminders[0].at, NOW.getTime() + 10 * 60_000);
-  assert.match(await run('set_reminder', { text: 'meeting', at: '2026-10-30T09:00' }), /Friday 2026-10-30 09:00/);
-  assert.match(await run('set_reminder', { text: 'x', at: '2020-01-01T00:00' }), /in the past/);
-  assert.match(await run('set_reminder', { text: 'x' }), /give "minutes"/);
+  assert.match(await run('set_reminder', { text: 'meeting', when: 'tomorrow 9am' }), /Friday 2026-10-30 09:00/);
+  // a deadline with minutes_before: notify 30 minutes ahead of 5 pm
+  assert.match(await run('set_reminder', { text: 'Submit', when: '5pm', minutes_before: 30 }), /Thursday 2026-10-29 16:30.*deadline Thursday 2026-10-29 17:00/);
+  assert.equal(reminders[2].at, new Date(2026, 9, 29, 16, 30).getTime());
+  // the old argument forms still work
+  assert.match(await run('set_reminder', { text: 'x', minutes: 5 }), /Reminder set/);
+  assert.match(await run('set_reminder', { text: 'x', at: '2026-10-30T09:00' }), /2026-10-30 09:00/);
+  // errors tell the model how to fix the call
+  assert.match(await run('set_reminder', { text: 'x', when: '2020-01-01T00:00' }), /already passed/);
+  assert.match(await run('set_reminder', { text: 'x', when: 'whenever' }), /could not understand the time "whenever"/);
+  assert.match(await run('set_reminder', { text: 'x' }), /"when" is missing/);
+});
+
+test('a deadline that is closer than minutes_before reminds right away', async () => {
+  const { run, reminders } = realTools();
+  await run('set_reminder', { text: 'Submit', when: 'in 10 minutes', minutes_before: 30 });
+  assert.equal(reminders[0].at, NOW.getTime() + 60_000);
+});
+
+test('reminders can be listed and cancelled', async () => {
+  const { run } = realTools();
+  assert.equal(await run('list_reminders', {}), 'No upcoming reminders.');
+  await run('set_reminder', { text: 'tea', when: 'in 10 minutes' });
+  assert.match(await run('list_reminders', {}), /\[1\] .* - tea/);
+  assert.equal(await run('cancel_reminder', { id: 1 }), 'Cancelled reminder 1.');
+  assert.match(await run('cancel_reminder', { id: 9 }), /no reminder 9/);
+});
+
+test('to-dos can be added, listed and ticked off by words', async () => {
+  const { run } = realTools();
+  await run('add_todo', { text: 'Buy milk' });
+  await run('add_todo', { text: 'Call mum' });
+  assert.match(await run('list_todos', {}), /\[ \] Buy milk/);
+  assert.equal(await run('complete_todo', { item: 'milk' }), 'Done: Buy milk');
+  assert.doesNotMatch(await run('list_todos', {}), /Buy milk/);
+  assert.match(await run('complete_todo', { item: 'dentist' }), /no open to-do/);
+});
+
+test('parse_time and convert_units do the arithmetic for the model', async () => {
+  const { run } = realTools();
+  assert.match(await run('parse_time', { when: 'tomorrow 3pm' }), /ISO 2026-10-30T15:00 {2}\| {2}in 1 day|ISO 2026-10-30T15:00.*in 24 hours 30 min/);
+  assert.match(await run('parse_time', { when: 'blah' }), /^Error/);
+  assert.equal(await run('convert_units', { value: 5, from: 'miles', to: 'km' }), '5 mi = 8.04672 km');
+});
+
+test('weather and wikipedia use a User-Agent and survive bad answers', async () => {
+  const seen: { url: string; ua?: string }[] = [];
+  const { run } = realTools({
+    fetchText: async (url, init) => {
+      seen.push({ url, ua: init?.headers?.['User-Agent'] });
+      if (url.includes('geocoding')) return { status: 200, text: JSON.stringify({ results: [{ name: 'Pilani', country: 'India', latitude: 28.4, longitude: 75.6 }] }), contentType: 'application/json' };
+      if (url.includes('open-meteo')) return { status: 200, text: JSON.stringify({ current: { temperature_2m: 31.2, apparent_temperature: 33, weather_code: 2, wind_speed_10m: 9, precipitation: 0 }, daily: { time: ['2026-10-29'], temperature_2m_min: [18], temperature_2m_max: [33], weather_code: [1], precipitation_probability_max: [5] } }), contentType: 'application/json' };
+      if (url.includes('rest_v1/page/summary/Ada')) return { status: 200, text: JSON.stringify({ title: 'Ada Lovelace', extract: 'English mathematician.', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Ada_Lovelace' } } }), contentType: 'application/json' };
+      return { status: 200, text: 'Please set a user-agent', contentType: 'text/plain' };
+    },
+  });
+  const w = await run('weather', { place: 'Pilani' });
+  assert.match(w, /Pilani, India: now 31°C .*partly cloudy/);
+  assert.match(w, /2026-10-29: 18-33°C, mostly clear, rain chance 5%/);
+  assert.match(await run('wikipedia', { topic: 'Ada' }), /Ada Lovelace: English mathematician\.\nSource: https:\/\/en\.wikipedia/);
+  assert.match(await run('wikipedia', { topic: 'Zzzz' }), /^Error: Wikipedia did not answer/);
+  assert.ok(seen.every((r) => /LFM3Pocket/.test(r.ua ?? '')), 'every request carries a User-Agent');
 });
 
 test('web_search falls back to Wikipedia when the first engine returns nothing', async () => {
@@ -280,22 +350,63 @@ test('an approval keeps the task waiting for the user, not for teammates', async
   assert.equal(r2.status, 'queued');
 });
 
-const webTool = (name: string): Tool => ({ name, description: name, web: true, parameters: { type: 'object', properties: { q: { type: 'string' } } }, async run() { return 'result'; } });
+const stub = (name: string, web = false, finishes = false): Tool => ({ name, description: name, web, finishes, parameters: { type: 'object', properties: { q: { type: 'string' } } }, async run() { return 'result'; } });
 
-test('a reminder-style task is never offered the web tools', async () => {
-  const { deps, llm } = setup([say('ok')], {}, [echo, webTool('web_search'), webTool('fetch_url')]);
+test('a reminder task is offered only the reminder tools', async () => {
+  const { deps, llm } = setup([say('ok')], {}, [stub('set_reminder', false, true), stub('list_reminders'), stub('web_search', true), stub('fetch_url', true), echo]);
   await runTask(newTask({ goal: 'Remind me at 11:30 to submit the assignment' }), deps);
   const names = llm.requests[0].tools.map((t: any) => t.function.name);
-  assert.ok(names.includes('echo'));
-  assert.ok(!names.includes('web_search') && !names.includes('fetch_url'));
+  assert.deepEqual(names.sort(), ['ask_user', 'list_reminders', 'set_reminder']);
+  assert.match(llm.requests[0].system, /SKILL: Reminders and deadlines/);
+  assert.match(llm.requests[0].system, /set_reminder \{"text": "Submit the BITS assignment"/);
 });
 
-test('other tasks keep the web tools but only get a few lookups', async () => {
+test('a bare deadline ("by 12") is treated as a reminder, not a web search', async () => {
+  const { deps, llm } = setup([say('ok')], {}, [stub('set_reminder'), stub('web_search', true)]);
+  await runTask(newTask({ goal: 'Submit bits assignment by 12' }), deps);
+  assert.deepEqual(llm.requests[0].tools.map((t: any) => t.function.name).sort(), ['ask_user', 'set_reminder']);
+});
+
+test('the run starts with a visible Skill step', async () => {
+  const { deps } = setup([say('ok')], {}, [stub('calculator'), stub('convert_units')]);
+  const r = await runTask(newTask({ goal: 'what is 18 * 25?' }), deps);
+  const first = r.steps![0];
+  assert.equal(first.title, 'Skill: Math and conversions');
+  assert.match(first.detail!, /calculator, convert_units/);
+});
+
+test('lookups get a few web calls, then a budget message', async () => {
   const lookups = [1, 2, 3, 4, 5].map((i) => use(call('web_search', { q: `q${i}` }, `w${i}`)));
-  const { deps, llm } = setup([...lookups, say('gave up')], {}, [webTool('web_search')]);
-  const r = await runTask(newTask({ goal: 'find the capital of Peru' }), deps);
+  const { deps, llm } = setup([...lookups, say('gave up')], {}, [stub('web_search', true)]);
+  const r = await runTask(newTask({ goal: 'search for the capital of Peru' }), deps);
   assert.equal(r.status, 'done');
   const results = llm.requests[5].messages.filter((m: any) => m.role === 'tool').map((m: any) => m.content);
   assert.equal(results.filter((c: string) => c === 'result').length, 3);
   assert.ok(results.some((c: string) => /budget used up/.test(c)));
+});
+
+test('after a finishing tool the model is told to confirm, and repeating it is refused', async () => {
+  const { deps, llm } = setup(
+    [use(call('set_reminder', { text: 'x', when: '5pm' }, 'a')), use(call('set_reminder', { text: 'x', when: '5pm' }, 'b')), say('Reminder set.')],
+    {},
+    [stub('set_reminder', false, true)],
+  );
+  const r = await runTask(newTask({ goal: 'remind me at 5pm to x' }), deps);
+  assert.equal(r.status, 'done');
+  assert.match(llm.requests[1].messages.at(-1).content, /Done\. If the user asked for anything else/);
+  assert.match(llm.requests[2].messages.at(-1).content, /Already done/);
+});
+
+test('skills route requests, and missing connections say so', async () => {
+  const names = ['set_reminder', 'calendar_list_events', 'calendar_create_event', 'parse_time'];
+  assert.equal(pickSkills('Remind me to call Ann tomorrow', names)[0].id, 'reminders');
+  assert.equal(pickSkills('what is on my calendar', names)[0].id, 'calendar');
+  assert.equal(pickSkills('weather in Delhi', names)[0].id, 'weather');
+  assert.equal(pickSkills('18% of 2500', names)[0].id, 'math');
+  assert.equal(pickSkills('tell me a joke', names)[0].id, 'general');
+  const mail = pickSkills('any unread email?', names)[0];
+  assert.deepEqual(mail.tools, []);
+  assert.match(mail.steps[0], /Gmail is not connected/);
+  // an exclusive skill is not mixed with others
+  assert.equal(pickSkills('remind me to search the weather', names).length, 1);
 });

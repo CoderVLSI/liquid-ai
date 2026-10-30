@@ -81,6 +81,20 @@ export interface Note {
   t: number;
 }
 
+export interface Reminder {
+  id: number;
+  /** when it fires, epoch ms */
+  at: number;
+  text: string;
+}
+
+export interface Todo {
+  id: string;
+  text: string;
+  done: boolean;
+  t: number;
+}
+
 export interface ToolSchema {
   type: 'function';
   function: { name: string; description: string; parameters: Record<string, unknown> };
@@ -92,6 +106,8 @@ export interface Tool {
   parameters: Record<string, unknown>;
   /** tools that touch the internet; hidden when the user switches web access off */
   web?: boolean;
+  /** the tool's own result is a complete answer; after it succeeds the model is told to just confirm in one sentence */
+  finishes?: boolean;
   /** tools that change something outside the phone describe the action here; the user must approve it first */
   approval?: (args: Record<string, any>) => string;
   run(args: Record<string, any>): Promise<string>;

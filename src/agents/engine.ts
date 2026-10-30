@@ -1,3 +1,5 @@
+import { allowedTools, pickSkills, skillPrompt } from './skills.ts';
+import type { Skill } from './skills.ts';
 import type { Agent, AgentMsg, AgentTask, Pending, Step, Tool, ToolCall, ToolSchema } from './types.ts';
 import { MAX_DELEGATION_DEPTH } from './types.ts';
 import { formatDateTime } from './tools.ts';
@@ -37,28 +39,23 @@ export interface EngineDeps {
 const MAX_TOOL_OUTPUT = 3000;
 const MAX_WEB_CALLS = 3;
 
-/** "remind me to...", "notify me at...", "don't let me forget..." */
-export function isReminderGoal(goal: string): boolean {
-  return /\b(remind|reminder|notify me|alert me|ping me|don'?t (let me )?forget)\b/i.test(goal);
-}
-
-export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: number): string {
+export function systemPrompt(agent: Agent, team: Agent[], now: Date, depth: number, skills: Skill[] = [], canDelegate = true): string {
   const mates = team.filter((a) => a.id !== agent.id);
   const lines = [
-    `You are ${agent.name}, an autonomous assistant running privately on the user's phone. ${agent.role}`,
+    `You are ${agent.name}, a small assistant running privately on the user's phone. ${agent.role}`,
     `Current time: ${formatDateTime(now)}.`,
-    'You work on one task at a time. Use the tools when they help; do not guess facts you can look up or compute.',
-    'Pick the tool that matches what the user asked for:',
-    '- "remind me", "notify me", "don\'t let me forget", a deadline or a time to be told about: call set_reminder right away. Use "at" (local date-time, e.g. 2026-10-30T11:30) for a clock time, or "minutes" for "in N minutes". Do not look anything up first.',
-    '- "note", "remember", "write down": save_note.',
-    '- web_search and fetch_url are only for facts from outside the phone (news, prices, public documentation). Never search for the user\'s own assignments, plans, messages or deadlines: you cannot find those online, they are in the task text.',
-    'If a time is ambiguous (like "by 12"), choose the next sensible occurrence after the current time, set the reminder, and say what you assumed. Use ask_user only when you truly cannot choose.',
-    'Call a tool only when needed, then continue from its result. When the task is complete, reply with the final result and no tool call.',
-    'Keep final answers short and concrete. If you need a decision or missing information from the user, call ask_user instead of guessing.',
+    '',
+    'RULES',
+    '1. Do exactly what the user asked, nothing extra.',
+    '2. Use only the tools you are given. Fill in their arguments with valid JSON, copying values from the user\'s words.',
+    '3. Never make up a tool result. If a tool returns an Error, correct the arguments and try once more; if it still fails, tell the user plainly.',
+    '4. If you are missing a detail you cannot reasonably guess (for example the time of a reminder), call ask_user with one short question.',
+    '5. When the work is done, reply with one or two short sentences and no tool call.',
   ];
-  if (mates.length && depth < MAX_DELEGATION_DEPTH) {
-    lines.push(`Teammates you can hand work to with delegate_task: ${mates.map((m) => `${m.name} (${m.role})`).join('; ')}.`);
-    lines.push('Independent sub-tasks can be delegated in the same turn (several delegate_task calls at once): your teammates work on them in parallel, so split big jobs instead of doing them one by one.');
+  if (skills.length) lines.push('', skillPrompt(skills));
+  if (canDelegate && mates.length && depth < MAX_DELEGATION_DEPTH) {
+    lines.push('', `Teammates you can hand work to with delegate_task: ${mates.map((m) => `${m.name} (${m.role})`).join('; ')}.`);
+    lines.push('Independent sub-tasks can be delegated in the same turn (several delegate_task calls at once): your teammates work on them in parallel.');
   }
   return lines.join('\n');
 }
@@ -115,18 +112,19 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
   const messages: AgentMsg[] = task.messages.length ? [...task.messages] : [{ role: 'user', content: task.goal }];
   const steps: Step[] = [...task.steps];
   let stepCount = task.stepCount;
-  const canDelegate = task.depth < MAX_DELEGATION_DEPTH && deps.team.some((a) => a.id !== deps.agent.id);
-  // A small model drifts into web searches for personal requests, so a reminder-style task never gets the web tools,
-  // and any other task gets a small search budget instead of an open-ended hunt.
-  const tools = isReminderGoal(task.goal) ? deps.tools.filter((t) => !t.web) : deps.tools;
+  const skills = pickSkills(task.goal, deps.tools.map((t) => t.name));
+  const tools = allowedTools(skills, deps.tools);
+  const canDelegate = task.depth < MAX_DELEGATION_DEPTH && deps.team.some((a) => a.id !== deps.agent.id) && skills.some((k) => k.delegate);
   const schemas = toolSchemas(tools, canDelegate);
   const byName = new Map(tools.map((t) => [t.name, t]));
   const seen = new Map<string, number>();
-  let webCalls = task.steps.filter((s) => s.kind === 'tool' && /^(web_search|fetch_url)\(/.test(s.title)).length;
+  const webNames = new Set(tools.filter((t) => t.web).map((t) => t.name));
+  let webCalls = task.steps.filter((s) => s.kind === 'tool' && webNames.has(s.title.split('(')[0])).length;
 
   const push = (s: Omit<Step, 't'>) => steps.push({ ...s, t: deps.now().getTime() });
   const sync = () => deps.onUpdate({ messages: [...messages], steps: [...steps], stepCount });
-  const system = () => systemPrompt(deps.agent, deps.team, deps.now(), task.depth);
+  const system = () => systemPrompt(deps.agent, deps.team, deps.now(), task.depth, skills, canDelegate);
+  if (!steps.length) push({ kind: 'info', title: `Skill: ${skills.map((k) => k.name).join(' + ')}`, detail: `Tools: ${tools.map((t) => t.name).join(', ') || 'none'}` });
 
   try {
     while (stepCount < maxSteps) {
@@ -160,6 +158,11 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
         if (!parsed.ok) {
           reply(`Error: ${parsed.error}. Call ${call.name} again with a valid JSON object.`);
           push({ kind: 'error', title: `${call.name}: bad arguments`, detail: call.arguments });
+          continue;
+        }
+        if (times > 1 && byName.get(call.name)?.finishes) {
+          reply('Already done. Do not call it again; reply with a short confirmation now.');
+          push({ kind: 'info', title: `Repeated ${call.name} call skipped` });
           continue;
         }
         if (times > 2) {
@@ -219,8 +222,9 @@ export async function runTask(task: AgentTask, deps: EngineDeps): Promise<Partia
         } catch (e: any) {
           out = `Error: ${e?.message ?? e}`;
         }
-        reply(out);
         push({ kind: 'tool', title: `${call.name}(${summarizeArgs(parsed.args)})`, detail: out });
+        // after a tool whose result is already the answer, steer a small model to stop instead of wandering on
+        reply(tool.finishes && !/^Error/.test(out) ? `${out}\nDone. If the user asked for anything else, do it now; otherwise reply with one short confirmation.` : out);
       }
 
       sync();
