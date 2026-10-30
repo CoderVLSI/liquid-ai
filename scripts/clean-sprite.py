@@ -43,9 +43,11 @@ def components(alpha, thresh=24):
 
 
 def is_magenta(r, g, b, loose=False):
+    # true magenta only (red and blue both high, green low, red about equal to blue): hot-pink art such as a pink
+    # frill has far less blue and must survive
     if loose:  # a semi-transparent rim that is mostly magenta
-        return r > 150 and b > 120 and g < 140 and (r - g) > 50 and (b - g) > 40
-    return r > 170 and b > 150 and g < 110 and (r - g) > 80 and (b - g) > 60
+        return r > 150 and b > 150 and g < 120 and abs(r - b) < 80 and (r - g) > 60 and (b - g) > 60
+    return r > 190 and b > 190 and g < 90 and abs(r - b) < 70
 
 
 def main():
