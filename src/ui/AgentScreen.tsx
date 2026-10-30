@@ -5,7 +5,7 @@ import { FadeIn } from './FadeIn';
 import { useAgents, useApp, useDownloads } from './hooks';
 import { colors, shared } from './theme';
 import { Icon } from './Icon';
-import { Mascot } from './Mascot';
+import { BuddyView } from './BuddyView';
 import type { MascotMood } from './Mascot';
 import { Chip, IDEAS, TaskCard } from './AgentsSheet';
 import { enqueue } from '../agents/runner';
@@ -106,12 +106,13 @@ export function AgentScreen() {
   }, [top.length]);
 
   const sub = useApp((s) => s.settings.agentWeb);
+  const buddyId = useApp((s) => s.settings.buddy);
   const name = useApp((s) => s.settings.agentName) || 'Pocket';
 
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.hero}>
-        <Mascot mood={mood} size={top.length ? 76 : 104} />
+        <BuddyView buddyId={buddyId} mood={mood} size={top.length ? 100 : 136} />
         <View style={styles.bubble}>
           <Text style={styles.bubbleText}>{line}</Text>
         </View>

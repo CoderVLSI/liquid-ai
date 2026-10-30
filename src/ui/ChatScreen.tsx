@@ -12,6 +12,7 @@ import { ModeToggle } from './ModeToggle';
 import { FadeIn } from './FadeIn';
 import { ms } from './motion';
 import { AgentScreen } from './AgentScreen';
+import { BuddyView } from './BuddyView';
 import { dismissCrashes, newChat, openSheet, restartServer } from '../app/controller';
 import { getModel } from '../models/catalog';
 import type { ChatMsg } from '../state/app';
@@ -90,10 +91,18 @@ const emptyArt = require('../../assets/art/empty.png');
 function Empty() {
   const states = useDownloads();
   const anyReady = Object.values(states).some((s) => s.status === 'ready');
+  const buddyId = useApp((s) => s.settings.buddy);
+  const name = useApp((s) => s.settings.agentName);
+  const user = useApp((s) => s.settings.userName);
   return (
     <View style={styles.empty}>
-      <Image source={anyReady ? emptyArt : heroArt} style={anyReady ? styles.emptyArt : styles.heroArt} resizeMode="contain" />
-      <Text style={styles.emptyTitle}>{anyReady ? 'Ask anything' : 'LFM3 Pocket'}</Text>
+      {anyReady && buddyId !== 'orb' ? (
+        <BuddyView buddyId={buddyId} mood="idle" size={170} />
+      ) : (
+        <Image source={anyReady ? emptyArt : heroArt} style={anyReady ? styles.emptyArt : styles.heroArt} resizeMode="contain" />
+      )}
+      <Text style={styles.emptyTitle}>{anyReady ? (user ? `Hi ${user}!` : 'Ask anything') : 'LFM3 Pocket'}</Text>
+      {anyReady && name ? <Text style={styles.emptyName}>{name} is listening</Text> : null}
       {anyReady ? (
         <Text style={styles.emptyText}>
           Type a message, attach a photo, or tap the mic for a live voice conversation. Everything stays on your phone.
@@ -215,6 +224,7 @@ const styles = StyleSheet.create({
   bannerLink: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   emptyTitle: { color: colors.text, fontSize: 26, fontWeight: '700' },
+  emptyName: { color: colors.accent, fontSize: 13, fontWeight: '700', marginTop: 2 },
   emptyText: { color: colors.muted, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 10 },
   jumpWrap: { position: 'absolute', right: 16, bottom: 74 },
   jump: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceHi, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },

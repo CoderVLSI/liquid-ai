@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
     "prebuild": "expo prebuild --platform android --no-install",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "buddies": "node scripts/gen-buddies.mjs"
   },
   "dependencies": {
     "expo": "~54.0.0",

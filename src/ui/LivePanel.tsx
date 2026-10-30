@@ -5,6 +5,8 @@ import { useApp } from './hooks';
 import { colors } from './theme';
 import { Icon } from './Icon';
 import { useReduceMotion } from './useReduceMotion';
+import { BuddyView } from './BuddyView';
+import { moodFromVoice } from '../buddies/mood';
 import { interruptAssistant, setMuted, stopVoice } from '../app/controller';
 
 const orb = require('../../assets/art/orb.png');
@@ -29,6 +31,7 @@ const GLOW: Record<string, string> = {
 export function LivePanel() {
   const voice = useApp((s) => s.voice);
   const callMode = useApp((s) => s.settings.callMode);
+  const buddyId = useApp((s) => s.settings.buddy);
   const level = useRef(new Animated.Value(1)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const reduce = useReduceMotion();
@@ -65,12 +68,18 @@ export function LivePanel() {
   return (
     <View style={styles.wrap}>
       <View style={styles.orbArea}>
-        {glow ? <Animated.View style={[styles.glow, { backgroundColor: glow, transform: [{ scale: animated ? breathe : level }] }]} /> : null}
-        <Animated.Image
-          source={orb}
-          style={[styles.orb, { opacity: voice.muted ? 0.35 : 1, transform: [{ scale: animated ? breathe : level }] }]}
-          resizeMode="contain"
-        />
+        {buddyId !== 'orb' ? (
+          <BuddyView buddyId={buddyId} mood={moodFromVoice(voice.state, voice.muted)} size={150} tappable={false} />
+        ) : (
+          <>
+            {glow ? <Animated.View style={[styles.glow, { backgroundColor: glow, transform: [{ scale: animated ? breathe : level }] }]} /> : null}
+            <Animated.Image
+              source={orb}
+              style={[styles.orb, { opacity: voice.muted ? 0.35 : 1, transform: [{ scale: animated ? breathe : level }] }]}
+              resizeMode="contain"
+            />
+          </>
+        )}
       </View>
       <Text style={styles.label}>{voice.muted ? 'Muted' : LABEL[voice.state] ?? voice.state}</Text>
       {!callMode ? <Text style={styles.hint}>Tip: use headphones so it does not hear itself</Text> : null}
